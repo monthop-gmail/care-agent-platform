@@ -64,3 +64,7 @@ class CareNotification(Base):
     correlation_id: Mapped[str | None] = mapped_column(String(63), nullable=True)
     aggregated_count: Mapped[int] = mapped_column(Integer, default=1)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # ส่งออกจริงหรือยัง — "บันทึกว่าส่ง" กับ "ส่งถึงจริง" เป็นคนละเรื่อง
+    # ข้อความที่ส่งไม่ออกต้องเห็นได้ ไม่ใช่หายเงียบ
+    delivery_status: Mapped[str] = mapped_column(String(16), default="pending")
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)

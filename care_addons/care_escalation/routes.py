@@ -94,6 +94,9 @@ async def list_notifications(
             "care_job_id": n.care_job_id,
             "aggregated_count": n.aggregated_count,
             "sent_at": n.sent_at,
+            # "บันทึกว่าส่ง" กับ "ส่งถึงจริง" เป็นคนละเรื่อง — ผู้ดูแลต้องเห็นความต่างนี้
+            "delivery_status": n.delivery_status,
+            "delivery_error": n.delivery_error,
         }
         for n in result.scalars()
     ]

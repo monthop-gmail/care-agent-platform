@@ -12,7 +12,9 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, time, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -26,6 +28,25 @@ from care_addons.ap_tenancy.services import TenantScope, assert_same_tenant, sco
 from care_addons.care_escalation import policy as escalation_policy
 from care_addons.care_escalation.models import CareJob, CareNotification
 from care_addons.care_patient.services import care_team, get_patient
+
+logger = logging.getLogger(__name__)
+
+# ช่องทางที่ส่งข้อความออกได้จริง — addon ของช่องทาง (เช่น care_line) ลงทะเบียนตัวเองที่นี่
+# ค่าเริ่มต้นไม่มีใครลงทะเบียน = ข้อความถูกบันทึกไว้ใน DB อย่างเดียว (โหมด PoC)
+_SENDERS: dict[str, Any] = {}
+
+
+def register_sender(channel: str, sender: Any) -> None:
+    """ลงทะเบียนตัวส่งของช่องทางหนึ่ง
+
+    sender(session, notification) -> (ok: bool, error: str | None)
+    ต้องไม่ raise — ช่องทางล่มต้องไม่ทำให้ care loop ทั้งวงหยุด
+    """
+    _SENDERS[channel] = sender
+
+
+def sender_for(channel: str):
+    return _SENDERS.get(channel)
 
 # capability ต่อชนิดของงาน — ใช้ประเมิน policy ก่อนส่งทุกครั้ง
 SEND_CAPABILITY = {
@@ -222,7 +243,46 @@ async def _send(
     )
     session.add(notification)
     await session.flush()
+    await _deliver(session, scope, job, notification)
     return notification
+
+
+async def _deliver(
+    session: AsyncSession, scope: TenantScope, job: CareJob, notification: CareNotification
+) -> None:
+    """ส่งออกช่องทางจริง — ล้มเหลวต้องเห็นได้ ไม่ใช่หายเงียบ"""
+    sender = sender_for(notification.channel)
+    if sender is None:
+        notification.delivery_status = "stored"   # ไม่มีช่องทางจริง เก็บไว้ใน DB อย่างเดียว
+        await session.flush()
+        return
+    try:
+        ok, error = await sender(session, notification)
+    except Exception as e:  # ช่องทางล่มต้องไม่ทำให้ care loop หยุด
+        logger.exception("ส่งข้อความออกช่องทาง %s ไม่สำเร็จ", notification.channel)
+        ok, error = False, str(e)
+
+    notification.delivery_status = "sent" if ok else "failed"
+    notification.delivery_error = None if ok else (error or "unknown")[:500]
+    await session.flush()
+
+    if not ok:
+        await audit.emit(
+            session,
+            _job_scope(scope, job),
+            event_type="EXECUTION_FAILED",
+            subject_type="execution",
+            subject_id=new_id("exec"),
+            job_id=job.care_job_id,
+            severity=job.severity,
+            error=f"ส่งไม่ออกทางช่องทาง {notification.channel}: {notification.delivery_error}",
+            attributes={
+                "patient_id": job.patient_id,
+                "channel": notification.channel,
+                "audience": notification.audience,
+                "target": notification.target_principal_id,
+            },
+        )
 
 
 def _reminder_text(job: CareJob, attempt: int, ask_directly: bool) -> str:
@@ -244,7 +304,10 @@ async def run_due_jobs(session: AsyncSession, scope: TenantScope, *, limit: int 
         scoped(
             select(CareJob)
             .where(
-                CareJob.state.in_(["pending", "reminded"]),
+                # รวม acknowledged ด้วย — "รับทราบแล้วแต่ยังไม่ได้ทำ" ต้องถูกตามต่อ
+                # (จบที่ตรงนี้ไม่ได้ ไม่งั้นคนที่ตอบว่า "ยัง" จะไม่มีใครเตือนอีกเลย)
+                # caregiver ที่กดรับเรื่องจะมี next_attempt_at = None จึงไม่ถูกหยิบมา
+                CareJob.state.in_(["pending", "reminded", "acknowledged"]),
                 CareJob.next_attempt_at.is_not(None),
                 CareJob.next_attempt_at <= current,
             )

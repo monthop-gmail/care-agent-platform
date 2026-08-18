@@ -57,8 +57,9 @@ M3 ── Escalation & Prep (A+B+C)
       DoD: daily summary ส่งได้ · approval ค้างได้ตลอดกาลโดยไม่มี auto-approve
 
 M4 ── Intelligence & Channels (C+E)
-      personal memory/RAG · conversational interface · LINE เต็มรูปแบบ · caregiver dashboard
-      DoD: ถามอะไรที่ไม่มีหลักฐาน ต้องตอบว่าไม่มีข้อมูล (มี adversarial test)
+      ✅ LINE ของผู้ป่วย/ผู้ดูแล (care_line)
+      ⬜ personal memory/RAG · caregiver dashboard · LIFF
+      DoD: ถามอะไรที่ไม่มีหลักฐาน ต้องตอบว่าไม่มีข้อมูล (มี adversarial test) — ผ่านแล้วสำหรับ LINE
 
 M5 ── Daily Living & Safety (D)
       care_activity · care_inventory · care_home · care_safety + IoT/wearable connector
@@ -85,6 +86,7 @@ M6 ── Multi-organization (A+E)
 | `care_journal` | ✅ อาการ/คำถามถึงหมอ + visit brief |
 | `care_appointment` | ✅ นัดหมาย + reminder ล่วงหน้า + **preparation checklist** + visit brief + บันทึกผลหลังพบหมอ |
 | `care_orientation` | ✅ 5 ชั้น (เวลา/วันที่/สถานที่/คน/แผน) + daily brief + temporal memory ("พรุ่งนี้") |
+| `care_line` | ✅ ช่องทางจริงของผู้ป่วย — จับคู่บัญชี, ส่ง reminder ออก LINE, รับคำตอบกลับแบบ deterministic ([ADR-0008](../decisions/0008-patient-channel-is-deterministic.md)) |
 | `ap_approval` · `care_careplan` · `care_activity` · `care_inventory` · `care_home` · `care_safety` · `care_orchestrator` | ⬜ ยังไม่เริ่ม |
 
 > **หมายเหตุ:** `care_appt_prep` ที่เคยวางไว้แยก ถูกรวมเข้า `care_appointment` แล้ว

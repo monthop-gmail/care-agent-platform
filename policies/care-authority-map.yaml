@@ -41,6 +41,7 @@ capabilities:
   question.entry.write:         { action_risk: low }
 
   caregiver.notify:             { action_risk: medium }
+  line.pairing.issue:           { action_risk: medium }   # ออกรหัสจับคู่ = ให้สิทธิ์เข้าถึงข้อมูล
   care.profile.update:          { action_risk: medium }   # เปิด/ปิดความสามารถของผู้ป่วย
   appointment.write:            { action_risk: medium }   # สร้าง/ปิดนัดหมาย
   careplan.task.write:          { action_risk: medium }

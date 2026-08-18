@@ -33,7 +33,8 @@ os.environ.setdefault("PSTACK_SECRET_KEY", "migration-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,ap_tenancy,ap_audit,ap_policy,care_patient,care_escalation,"
-    "care_routine,care_medication,care_journal,care_appointment,care_orientation",
+    "care_routine,care_medication,care_journal,care_appointment,care_orientation,"
+    "line_oa,care_line",
 )
 
 IGNORED_TABLE_PREFIXES = ("alembic_version",)

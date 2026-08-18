@@ -31,6 +31,8 @@ MODULES = [
     "care_journal",
     "care_appointment",
     "care_orientation",
+    "line_oa",
+    "care_line",
 ]
 
 # CI รันชุดเดียวกันสองรอบ: sqlite (เร็ว) และ Postgres (ตรงกับ production)

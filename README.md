@@ -39,7 +39,7 @@ repo นี้เก็บเฉพาะ **addons ของตัวเอง**
 
 ## สถานะ
 
-**M1 เสร็จ · M2 เสร็จ** — closed loop เดินได้เต็มวง (เตือน → ยืนยัน → เตือนซ้ำ → พลาด →
+**M1 · M2 เสร็จ · M4 ต่อ LINE แล้ว** — closed loop เดินได้เต็มวง (เตือน → ยืนยัน → เตือนซ้ำ → พลาด →
 ส่งต่อผู้ดูแล) พร้อม tenant isolation, consent, policy engine, audit trail, medication
 version chain, health journal, นัดหมาย + การเตรียมตัวไปพบหมอ และ orientation/daily brief
 ดูรายละเอียดและงานที่ค้างที่ [`architecture/team-plan.md`](architecture/team-plan.md)
@@ -60,6 +60,32 @@ curl localhost:8000/healthz
 python examples/seed_demo.py
 curl -X POST -H "X-Tenant-Id: t-demo-family" localhost:8000/api/care/jobs/tick
 ```
+
+### ต่อ LINE ให้ผู้ป่วยใช้จริง
+
+1. สร้าง LINE channel ในระบบ — 🔒 **ต้องตั้ง `agent_enabled: false`** ([ADR-0008](decisions/0008-patient-channel-is-deterministic.md))
+
+```bash
+curl -X POST localhost:8000/api/line/channels -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"name":"Care OA","channel_id":"<LINE channel ID>","channel_secret":"<secret>",
+       "access_token":"<long-lived token>","agent_enabled":false,
+       "greeting":"สวัสดีครับ พิมพ์ “ผูก <รหัส>” เพื่อเริ่มใช้งานได้เลยครับ"}'
+```
+
+2. ตั้ง webhook ที่ LINE Console: `https://<โดเมน>/api/line/webhook/<LINE channel ID>`
+3. ออกรหัสจับคู่ให้ผู้ป่วย แล้วให้พิมพ์ `ผูก <รหัส>` ในแชท
+
+```bash
+curl -X POST localhost:8000/api/care/line/pairing-codes \
+  -H "authorization: Bearer $TOKEN" -H "X-Tenant-Id: t-demo-family" \
+  -H 'content-type: application/json' \
+  -d '{"patient_id":"<patient_id>","principal_id":"<patient_id>","role":"patient"}'
+```
+
+จากนั้นผู้ป่วยพูดกับ OA ได้เลย — “ทำแล้ว” · “ยัง” · “วันนี้วันอะไร” · “พรุ่งนี้ต้องทำอะไร” ·
+“วันนี้กินยาอะไร” · “กินยาแล้วยัง” · “จด ...” ส่วนผู้ดูแลผูกด้วย `role: caregiver`
+แล้วพิมพ์ “รับเรื่อง” เพื่อหยุดการเตือนเมื่อรับช่วงต่อ
 
 ### Dev บนเครื่อง
 

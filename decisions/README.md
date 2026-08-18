@@ -12,6 +12,7 @@
 | [0005](0005-medication-versioning.md) | medication เป็น append-only version chain ห้าม overwrite | Accepted |
 | [0006](0006-ai-has-no-medical-authority.md) | AI ไม่มี medical authority — บังคับผ่าน authority_map | Accepted |
 | [0007](0007-consent-and-data-access.md) | consent เป็นเงื่อนไขการเข้าถึง ไม่ใช่แค่ RBAC | Accepted |
+| [0008](0008-patient-channel-is-deterministic.md) | ช่องทางของผู้ป่วยตอบแบบ deterministic ไม่ผ่าน LLM | Accepted |
 
 ## กติกา
 
