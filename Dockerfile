@@ -20,5 +20,10 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # addons ของ care-agent-platform (PSTACK_ADDONS_PATHS=addons,care_addons)
 COPY care_addons /app/care_addons
 
+# config ที่โค้ดอ่านตอน runtime — ขาดไปแล้ว policy engine จะพังตอนมีงานเข้า ไม่ใช่ตอน boot
+# (มีเทสกันไว้ที่ tests/test_architecture_rules.py)
+COPY policies /app/policies
+COPY profiles /app/profiles
+
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

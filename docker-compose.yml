@@ -7,7 +7,8 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "8000:8000"
+      # เซิร์ฟเวอร์รวมมักมีของกิน 8000 อยู่แล้ว — ตั้ง APP_PORT ใน .env ได้
+      - "${APP_PORT:-8000}:8000"
     volumes:
       - uploads:/app/uploads
     depends_on:

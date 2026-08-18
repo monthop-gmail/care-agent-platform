@@ -117,3 +117,16 @@ def test_no_direct_datetime_now_in_domain_code():
                 if "datetime.now(" in line and "clock.py" not in path.name:
                     offenders.append(f"{path.relative_to(ROOT)}:{number}")
     assert not offenders, "ใช้ clock.now() แทน datetime.now():\n" + "\n".join(offenders)
+
+
+def test_dockerfile_copies_every_runtime_directory():
+    """โค้ดอ่าน policies/ ตอน runtime — ถ้า image ไม่มี ระบบจะพังตอนมีงานเข้า ไม่ใช่ตอน boot
+
+    บั๊กนี้เคยเกิดจริง: เทสบนเครื่องผ่านหมดเพราะอ่านจาก repo แต่ใน container ไม่มีไฟล์
+    """
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    for directory in ("care_addons", "policies", "profiles"):
+        assert f"COPY {directory} " in dockerfile, (
+            f"Dockerfile ไม่ได้ copy '{directory}/' เข้า image "
+            f"— โค้ดที่อ่านไฟล์ในโฟลเดอร์นี้จะพังใน container"
+        )

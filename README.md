@@ -52,9 +52,16 @@ repo นี้เก็บเฉพาะ **addons ของตัวเอง**
 ### Docker
 
 ```bash
-cp .env.example .env      # แก้ PSTACK_SECRET_KEY ก่อนใช้จริง
+cp .env.example .env      # แก้ PSTACK_SECRET_KEY ก่อนใช้จริง (และ APP_PORT ถ้าพอร์ตชน)
 docker compose up -d --build
 curl localhost:8000/healthz
+```
+
+ลองวงจรเต็ม (สร้าง tenant → ผู้ป่วย → กิจวัตร → เตือน → ยืนยัน → ดู audit trail):
+
+```bash
+python examples/seed_demo.py
+curl -X POST -H "X-Tenant-Id: t-demo-family" localhost:8000/api/care/jobs/tick
 ```
 
 ### Dev บนเครื่อง
