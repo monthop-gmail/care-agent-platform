@@ -101,12 +101,13 @@ M6 ── Multi-organization (A+E)
 สิ่งที่ kernel ยังไม่มีและเราแก้เองในรีโปนี้ไม่ได้ (ห้ามแก้โค้ด pstack ที่นี่ — [ADR-0002](../decisions/0002-runtime-on-pstack.md))
 ติดตามที่ issue ข้างล่าง **อย่าเปิดรอบใหม่ในนี้ ให้ไปคุยที่ต้นทาง**
 
-| upstream | เรื่อง | กระทบเราแค่ไหน |
+| upstream | เรื่อง | สถานะ |
 |---|---|---|
-| [pstack#2](https://github.com/willpower-institute/pstack/issues/2) | ลงทะเบียน periodic/cron job ไม่ได้ | 🔴 **ติดจริง** — `care_tick` เขียนไว้แล้วแต่ไม่มีอะไรมาปลุก ต้องพึ่ง cron นอกระบบไปก่อน |
-| [pstack#1](https://github.com/willpower-institute/pstack/issues/1) | loader ไม่สร้างตารางถ้าโมดูลถูก import ก่อน `create_app()` | 🟠 มี workaround ที่ `conftest._ensure_all_tables()` แต่ทำให้เทสไม่ได้ทดสอบเส้นทางติดตั้งจริง |
-| [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — `ap_tenancy` ใช้ได้อยู่ และเขียนให้ยกขึ้น kernel ได้ทีหลัง |
-| [pstack-app-template#1](https://github.com/willpower-institute/pstack-app-template/issues/1) | Dockerfile ของ template copy แค่ addons | ✅ แก้ฝั่งเราแล้ว (copy `policies/` + เทสกัน regression) |
+| [pstack#2](https://github.com/willpower-institute/pstack/issues/2) | ลงทะเบียน periodic/cron job ไม่ได้ | ✅ **แก้แล้วใน pstack v0.2.0** — `care_tick` เป็น `@periodic_job` แล้ว worker เดินลูปเองทุกนาที |
+| [pstack#1](https://github.com/willpower-institute/pstack/issues/1) | loader ไม่สร้างตารางถ้าโมดูลถูก import ก่อน `create_app()` | ✅ **แก้แล้วใน pstack v0.2.0** — ถอด workaround `_ensure_all_tables()` ออกจาก conftest แล้ว |
+| [pstack#4](https://github.com/willpower-institute/pstack/issues/4) | worker service ใน compose พังเพราะ `arq` เป็น console script | 🟠 เลี่ยงแล้วด้วย `python -m arq` ใน compose ของเรา รอ fix ต้นทาง |
+| [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — รอ platform owner เคาะ 5 ข้อ แล้วจึงยก `ap_tenancy` ขึ้น kernel |
+| [pstack-app-template#1](https://github.com/willpower-institute/pstack-app-template/issues/1) | Dockerfile ของ template copy แค่ addons | ✅ แก้ทั้งสองฝั่งแล้ว |
 
 **กติกา:** เจอข้อจำกัดของ kernel ให้เปิด issue ที่ pstack แล้วเพิ่มแถวในตารางนี้
 พร้อมระบุว่าเราติดจริงหรือมี workaround — ทีมอื่นจะได้ไม่ไปชนของเดิมซ้ำ

@@ -47,31 +47,12 @@ from care_addons.ap_tenancy.clock import set_now
 DB_FILE = ROOT / "test_care.db"
 
 
-def _ensure_all_tables() -> None:
-    """สร้างตารางที่ loader ข้ามไป
-
-    กับดักของ pstack loader: มันหาว่าโมดูลมีตารางอะไรจากการ diff `Base.metadata`
-    ตอน import โมดูล — แต่ไฟล์เทสถูก import ก่อน `create_app()` เสมอ พอถึงตอนโหลดจริง
-    โมดูลนั้นอยู่ใน sys.modules แล้ว diff จึงได้ว่างและตารางไม่ถูกสร้าง
-
-    ใน production ไม่เจอปัญหานี้ (ไม่มีใคร import addon ก่อน kernel) และเมื่อทุก addon
-    มี Alembic migration ของตัวเองแล้ว เส้นทางนี้จะไม่ถูกใช้เลย — ดู tests/README.md
-    """
-    from core.db import Base
-    from sqlalchemy import create_engine
-
-    sync_engine = create_engine(f"sqlite:///{DB_FILE}")
-    Base.metadata.create_all(sync_engine, checkfirst=True)
-    sync_engine.dispose()
-
-
 @pytest.fixture(scope="session")
 def app():
     if DB_FILE.exists():
         DB_FILE.unlink()
     application = create_app()
     with TestClient(application) as client:      # lifespan สร้างตาราง + รัน hooks ของทุกโมดูล
-        _ensure_all_tables()
         yield application, client
     if DB_FILE.exists():
         DB_FILE.unlink()

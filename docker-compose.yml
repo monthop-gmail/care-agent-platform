@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        PSTACK_REF: ${PSTACK_REF:-v0.1.1}
+        PSTACK_REF: ${PSTACK_REF:-v0.2.0}
     restart: unless-stopped
     env_file: .env
     ports:
@@ -25,9 +25,12 @@ services:
     build:
       context: .
       args:
-        PSTACK_REF: ${PSTACK_REF:-v0.1.1}
+        PSTACK_REF: ${PSTACK_REF:-v0.2.0}
     restart: unless-stopped
-    command: arq core.worker.WorkerSettings
+    # `python -m arq` ไม่ใช่ `arq` — console script ไม่มี CWD ใน sys.path จึงไป import
+    # pstack ที่ติดตั้งใน site-packages ซึ่งไม่มี addons ย่อย แล้วพังด้วย
+    # ModuleNotFoundError: No module named 'addons.users' (willpower-institute/pstack#4)
+    command: python -m arq core.worker.WorkerSettings
     env_file: .env
     volumes:
       - uploads:/app/uploads

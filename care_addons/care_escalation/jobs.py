@@ -1,6 +1,10 @@
-"""Background job — เดิน closed loop ทุกนาทีผ่าน ARQ worker
+"""Periodic job — เดิน closed loop ทุกนาทีผ่าน ARQ worker
 
-ต่างจาก tick endpoint ตรงที่วนทุก tenant ที่มีงานค้าง
+ต่างจาก tick endpoint ตรงที่วนทุก tenant ที่มีงานค้าง และไม่ต้องมีใครมาเรียก
+
+⏰ cron ของ pstack ตีความด้วยเวลา UTC ของ container — ที่นี่ไม่ต้องแปลงอะไร
+   เพราะ due time ของทุก job ถูกคำนวณเป็น UTC ตั้งแต่ตอน materialize แล้ว
+   (timezone ของผู้ป่วยถูกใช้ตอนแปลง "08:00 ตามเวลาไทย" เป็น UTC เท่านั้น)
 """
 
 from __future__ import annotations
@@ -9,7 +13,7 @@ import logging
 from typing import Any
 
 from core.db import get_sessionmaker
-from core.jobs import background_job
+from core.jobs import periodic_job
 from sqlalchemy import select
 
 from care_addons.ap_tenancy.services import Principal, TenantScope
@@ -21,7 +25,7 @@ logger = logging.getLogger(__name__)
 SYSTEM_PRINCIPAL = Principal(type="service", id="care-orchestrator", display_name="Care Orchestrator")
 
 
-@background_job
+@periodic_job(minute=set(range(60)))   # ทุกนาที — ต้องการ pstack >= v0.2.0
 async def care_tick(ctx: Any) -> dict:
     totals = {"reminded": 0, "missed": 0, "escalated": 0, "deferred": 0}
     async with get_sessionmaker()() as session:
