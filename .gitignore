@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Test / tooling
+.pytest_cache/
+.ruff_cache/
+*.db
+*.sqlite3
+
+# pstack checkout สำหรับ dev/CI
+pstack_src/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+/uploads/
+
+# local tooling
+.claude/settings.local.json

@@ -1,0 +1,65 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/patient/v1/patient.schema.yaml
+title: Patient
+description: >-
+  ผู้รับการดูแล — อยู่ภายใต้ tenant เสมอ (identity/v1 · ADR-0007 ของ agent-platform)
+  ระบบนี้ไม่ผูกกับโรคใดโรคหนึ่ง — ความสามารถที่เปิดใช้อยู่ที่ `care_profile` ไม่ใช่ที่การวินิจฉัย
+
+$defs:
+  CareProfile:
+    description: >-
+      เปิด/ปิดความสามารถทีละอย่าง — 🔒 ค่า default ของทุกอย่างคือ `false`
+      ต้องเลือกเปิดเอง ไม่มีการเปิดให้อัตโนมัติจากข้อมูลสุขภาพ
+    type: object
+    additionalProperties: false
+    properties:
+      routine: { type: boolean, default: false }
+      medication: { type: boolean, default: false }
+      appointment: { type: boolean, default: false }
+      nutrition: { type: boolean, default: false }
+      safety: { type: boolean, default: false }
+      memory_assistance: { type: boolean, default: false }
+      daily_living: { type: boolean, default: false }
+      caregiver_escalation: { type: boolean, default: false }
+
+  ChannelPreference:
+    description: ช่องทางที่ใช้คุยกับผู้ป่วย เรียงตามลำดับที่ลอง
+    type: array
+    items:
+      enum: [line, app, voice, sms, caregiver_relay]
+
+type: object
+required: [patient_id, tenant_id, display_name, care_profile]
+properties:
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  workspace_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/WorkspaceId
+  display_name:
+    type: string
+    description: ชื่อที่ใช้เรียกผู้ป่วย — ใช้ในข้อความที่ผู้ป่วยเห็น
+  timezone:
+    type: string
+    default: Asia/Bangkok
+    description: 🔒 routine/appointment ทุกอย่างตีความด้วย timezone นี้ ห้ามใช้ค่าของ server
+  care_profile:
+    $ref: '#/$defs/CareProfile'
+  channels:
+    $ref: '#/$defs/ChannelPreference'
+  quiet_hours:
+    type: object
+    description: ช่วงเวลาที่ห้ามรบกวน ยกเว้น severity critical
+    properties:
+      start: { type: string, pattern: '^[0-2][0-9]:[0-5][0-9]$' }
+      end: { type: string, pattern: '^[0-2][0-9]:[0-5][0-9]$' }
+  status:
+    enum: [active, paused, discharged]
+    default: active
+
+patient_rules:
+  rules:
+    - "ห้ามเก็บการวินิจฉัยโรคใน patient record — สิ่งที่ระบบรู้คือสิ่งที่ต้องทำ ไม่ใช่ว่าเป็นอะไร"
+    - "ทุก query ที่อ่าน patient ต้องผ่าน tenant guard และ consent check (ADR-0007)"
+    - "เปลี่ยน care_profile ต้องออก audit event — เป็น state change"

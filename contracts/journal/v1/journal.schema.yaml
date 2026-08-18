@@ -1,0 +1,56 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/journal/v1/journal.schema.yaml
+title: Health Journal Entry
+description: >-
+  สิ่งที่ผู้ป่วยสังเกตเห็นหรืออยากถามหมอ — บันทึกด้วยคำพูดธรรมดาได้
+  🔒 **เป็นการสังเกต ไม่ใช่การวินิจฉัย** ระบบห้ามจัดหมวดว่าเป็นโรคอะไร
+
+$defs:
+  EntryType:
+    enum: [observation, question, concern, side_effect, event]
+
+  Classification:
+    description: >-
+      ระบบช่วย "จัดข้อมูลให้คนที่มีหน้าที่ตัดสินใจ" ได้ — แต่ค่าเริ่มต้นคือ `unclassified`
+      และการเชื่อมโยงกับแพทย์เป็นเพียง *อาจเกี่ยวข้อง* ไม่ใช่ข้อสรุป
+    enum: [unclassified, possibly_relevant, patient_assigned, caregiver_assigned]
+
+type: object
+required: [entry_id, tenant_id, patient_id, entry_type, text, recorded_at, recorded_by]
+properties:
+  entry_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  entry_type: { $ref: '#/$defs/EntryType' }
+  text:
+    type: string
+    description: คำพูดของผู้ป่วยตามที่บันทึก — 🔒 ห้ามให้ LLM เขียนใหม่แล้วเก็บทับของเดิม
+  recorded_at: { type: string, format: date-time }
+  recorded_by:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+  classification:
+    $ref: '#/$defs/Classification'
+  target_specialty:
+    type: string
+    description: อยากถามหมอสาขาไหน — ผู้ป่วย/ผู้ดูแลเป็นคนระบุ ไม่ใช่ระบบเดา
+  status:
+    enum: [open, brought_to_doctor, answered, closed]
+    default: open
+  answer:
+    type: object
+    description: คำตอบจากหมอ — ต้องมีคนยืนยันก่อนบันทึก
+    properties:
+      text: { type: string }
+      answered_at: { type: string, format: date-time }
+      confirmed_by:
+        $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+
+journal_rules:
+  rules:
+    - "ห้ามบังคับให้ผู้ป่วยเลือกหมอหรือหมวดตอนบันทึก — unclassified เป็นสถานะที่ถูกต้อง"
+    - "ห้ามให้ LLM แก้ข้อความต้นฉบับของผู้ป่วย — สรุปได้แต่ต้องเก็บต้นฉบับไว้เสมอ"
+    - "คำถามที่ยัง open ต้องถูกดึงมาแสดงก่อนวันนัดโดยอัตโนมัติ"
+    - "ห้ามสร้าง entry จากการอนุมานของ AI — ต้องมีคนพูด/พิมพ์/ยืนยันเสมอ"

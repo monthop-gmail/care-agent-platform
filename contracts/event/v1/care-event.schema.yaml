@@ -1,0 +1,103 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/event/v1/care-event.schema.yaml
+title: Care Event
+description: >-
+  event ของโดเมน care — **เป็นส่วนขยายของ `event/v1` ของ agent-platform ไม่ใช่ของแทน**
+  ทุก care event ต้อง valid ตาม envelope ของ platform ก่อน แล้วจึงเพิ่มข้อกำหนดในไฟล์นี้
+
+  guarantee ของ platform ลดทอนไม่ได้: append-only · no silent state change ·
+  reject event ที่ resolve tenant ไม่ได้ · external event ต้องคง source ·
+  ห้ามเก็บ chain-of-thought เป็น audit record
+
+  ดู ADR-0004
+
+extends:
+  $ref: https://schemas.agent-platform.internal/event/v1/event.schema.yaml
+
+$defs:
+  CareEventType:
+    description: >-
+      🔓 ชุดเปิด — เพิ่มได้แบบ additive ตาม `event/v1` `$defs.EventType`
+      ตั้งชื่อแบบ `care.<โดเมน>.<สิ่งที่เกิดขึ้นแล้ว>` เป็นอดีตเสมอ (สังเกตการณ์ ไม่ใช่คำสั่ง)
+    enum:
+      - care.reminder.sent
+      - care.reminder.acknowledged
+      - care.reminder.missed
+      - care.meal.confirmed
+      - care.meal.missed
+      - care.medication.confirmed
+      - care.medication.missed
+      - care.medication.changed
+      - care.medication.conflict
+      - care.appointment.reminded
+      - care.appointment.prep_step_done
+      - care.appointment.completed
+      - care.journal.recorded
+      - care.question.recorded
+      - care.plan.task_completed
+      - care.orientation.delivered
+      - care.task.step_completed
+      - care.task.stalled
+      - care.deviation.detected
+      - care.escalated
+
+  Severity:
+    description: >-
+      ความเร่งด่วนของการแจ้งเตือน — 🔒 **ไม่ใช่ความรุนแรงของโรค**
+      ห้ามใช้ค่านี้สื่อถึงสภาวะทางการแพทย์ของผู้ป่วย
+    enum: [low, medium, high, critical]
+
+  Observation:
+    description: >-
+      payload ของ `care.deviation.detected` — 🔒 มีได้เฉพาะข้อเท็จจริงที่วัดได้
+      **ห้ามมี field ที่แปลผลทางการแพทย์** เช่น condition, diagnosis, illness_severity (ADR-0004 ข้อ 4)
+    type: object
+    additionalProperties: false
+    required: [expected_at, observed]
+    properties:
+      expected_at: { type: string, format: date-time }
+      observed:
+        enum: [not_recorded, recorded_late, recorded_early, no_evidence]
+      delta_minutes: { type: integer }
+      baseline_days:
+        type: integer
+        description: จำนวนวันของ baseline ที่ใช้เทียบ — ไม่มี baseline พอ ห้ามออก event นี้
+
+type: object
+required: [care_event_type, patient_id, severity]
+properties:
+  care_event_type:
+    $ref: '#/$defs/CareEventType'
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+    description: >-
+      🔒 invariant — care event ทุกตัวต้องรู้ว่าเป็นของผู้ป่วยคนไหน
+      resolve ไม่ได้ให้ reject ที่ intake ห้ามเดา (ล้อกฎ tenant_id ของ platform)
+  severity:
+    $ref: '#/$defs/Severity'
+  evidence:
+    type: object
+    description: >-
+      หลักฐานที่ทำให้ระบบสรุปแบบนี้ — 🔒 ไม่มีหลักฐาน = ต้องบอกว่าไม่มี ห้ามเดา (ADR-0006 ข้อ 5)
+    required: [kind]
+    properties:
+      kind:
+        enum: [patient_confirmed, caregiver_confirmed, device_reported, document, none]
+      recorded_by:
+        $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+  observation:
+    $ref: '#/$defs/Observation'
+  care_job_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+    description: >-
+      รอบการดูแลที่ event นี้สังกัด — map เป็น `job_id` ของ platform
+      🔒 ห้ามสร้างค่าปลอมให้ event ที่ไม่ได้เกิดจากรอบการดูแล
+
+care_rules:
+  description: กฎที่ implementation ต้องบังคับ — ตรวจโดย scenario test ไม่ใช่แค่ schema
+  rules:
+    - "care event ที่ resolve patient ไม่ได้ ให้ reject ที่ intake ห้ามเดา patient ให้"
+    - "`care.deviation.detected` ที่ไม่มี baseline เพียงพอ ห้ามออก event"
+    - "`evidence.kind: none` แปลว่ายังไม่มีข้อมูล — UI ต้องแสดงว่าไม่มีข้อมูล ห้ามแสดงเป็นยืนยันแล้ว"
+    - "หลาย event ของ care_job เดียวกันต้องมี correlation_id เดียวกัน เพื่อรวมเป็นการแจ้งครั้งเดียว"
+    - "severity ไม่ใช่ความรุนแรงของโรค — ห้าม map ไปเป็นข้อความเชิงวินิจฉัยในทุก channel"

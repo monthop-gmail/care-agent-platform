@@ -1,0 +1,49 @@
+# เวอร์ชันของ agent-platform ที่ repo นี้ conform อยู่
+#
+# อัปเกรดเป็น PR แยกเสมอ: เปลี่ยน commit ที่นี่ → รัน drift_check → แก้ contract ที่พัง → ค่อย merge
+# ห้ามอัปเกรดปนกับงาน feature
+
+repo: monthop-gmail/agent-platform
+ref: main
+commit: c1a4f4041341502a8b4c0becb96f43813de4cf20
+pinned_at: "2026-08-18"
+
+# $ref ที่ contract ของเราอ้างไปที่ agent-platform ได้ — ทุกตัวต้องมีจริงที่ commit ข้างบน
+# เพิ่มรายการใหม่ = ต้องรัน drift_check แบบ --online ให้ผ่านก่อน commit
+allowed_refs:
+  identity/v1/identity.schema.yaml:
+    - $defs/Id
+    - $defs/TenantId
+    - $defs/WorkspaceId
+    - $defs/ActorId
+    - $defs/AgentId
+    - $defs/ExecutionId
+    - $defs/Principal
+    - $defs/RequestContext
+    - $defs/ExecutionContext
+  event/v1/event.schema.yaml:
+    - ""            # อ้างทั้งไฟล์ (envelope)
+    - $defs/EventType
+    - $defs/SubjectType
+  policy/v1/policy-decision.schema.yaml:
+    - $defs/Effect
+    - $defs/Authority
+    - $defs/Constraint
+  capability/v1/capability.schema.yaml:
+    - $defs/ActionRisk
+  approval/v1/approval.schema.yaml:
+    - $defs/Decision
+  error/v1/error.schema.yaml:
+    - ""
+
+# guarantee ของ platform ที่ implementation ของเราลดทอนไม่ได้ (event/v1 · ADR-0004)
+# drift_check ไม่ตรวจข้อเหล่านี้ — scenario test เป็นคนตรวจ
+frozen_guarantees:
+  - event เป็น append-only แก้หรือลบไม่ได้
+  - no silent state change — ทุกการเปลี่ยน state ต้องมี event
+  - event ที่ resolve tenant ไม่ได้ ให้ reject ที่ intake ห้ามเดา tenant ให้
+  - external event ต้องคง source ไว้ให้รู้ตลอดไปว่ามาจากข้างนอก
+  - ห้ามเก็บ private reasoning / chain-of-thought เป็น audit record
+  - consumer ที่เจอ event_type ที่ไม่รู้จักต้องเก็บไว้แล้วข้ามการตีความ ห้าม drop ห้าม fail
+  - ค่า authority ที่ไม่รู้จักต้อง fallback เป็น human_command_required
+  - ค่า action_risk ที่ไม่รู้จักต้อง fallback เป็น critical

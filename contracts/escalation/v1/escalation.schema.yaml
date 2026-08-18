@@ -1,0 +1,73 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/escalation/v1/escalation.schema.yaml
+title: Care Job & Escalation
+description: >-
+  หนึ่ง "รอบการดูแล" — เตือน → ยืนยัน → เตือนซ้ำ → ถาม → พลาด → ส่งต่อคน
+  map เป็น `job` ของ agent-platform (ADR-0004) · reminder ที่ไม่มี job = ข้อความลอย ห้ามมีในระบบนี้
+
+$defs:
+  JobState:
+    enum: [pending, reminded, acknowledged, confirmed, missed, escalated, cancelled]
+
+  TaskState:
+    description: สถานะของงานหลายขั้นตอน — "ส่ง reminder แล้ว ≠ งานเสร็จ"
+    enum:
+      - not_started
+      - starting
+      - in_progress
+      - waiting
+      - blocked
+      - ready_for_next_step
+      - completed
+      - abandoned
+      - needs_help
+
+  EscalationTarget:
+    type: object
+    required: [principal, channel]
+    properties:
+      principal:
+        $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+      channel:
+        enum: [line, app, sms, voice_call, email]
+      order:
+        type: integer
+        description: ลำดับที่ลอง — ไม่ส่งพร้อมกันทุกคน ยกเว้น severity critical
+
+type: object
+required: [care_job_id, tenant_id, patient_id, state, due_at]
+properties:
+  care_job_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  source_kind:
+    enum: [routine, meal, medication, appointment, careplan, activity, safety]
+  source_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  state: { $ref: '#/$defs/JobState' }
+  due_at: { type: string, format: date-time }
+  attempts:
+    type: integer
+    default: 0
+  max_attempts:
+    type: integer
+    default: 3
+    description: เพดานต่อรอบ — กัน notification storm
+  next_attempt_at: { type: string, format: date-time }
+  escalated_to:
+    type: array
+    items: { $ref: '#/$defs/EscalationTarget' }
+  correlation_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+    description: event ทั้งหมดของรอบนี้ใช้ค่าเดียวกัน เพื่อรวมเป็นการแจ้งครั้งเดียว
+
+escalation_rules:
+  rules:
+    - "ทุกการเปลี่ยน state ออก event STATE_TRANSITION — ห้ามเปลี่ยนเงียบ ๆ"
+    - "caregiver กด acknowledged แล้วต้องหยุดเตือนทันที"
+    - "quiet hours ของผู้ป่วยมีผลกับทุก severity ยกเว้น critical"
+    - "เกิน max_attempts แล้วห้ามเตือนซ้ำอีก — ต้อง escalate หรือปิดรอบเท่านั้น"
+    - "หลาย job ที่พลาดพร้อมกันของผู้ป่วยคนเดียวรวมเป็นการแจ้งครั้งเดียว"

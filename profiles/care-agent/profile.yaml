@@ -1,0 +1,64 @@
+# $schema: agent-platform contracts/profile/v1/profile.schema.yaml
+# profile เป็น "เพดาน" ไม่ใช่ "การอนุญาต" — สิทธิ์จริงคือส่วนที่ profile, agent และ policy
+# ของ tenant ตกลงตรงกันทั้งสามฝ่าย
+
+profile_id: care-agent
+display_name: Care Agent
+description: >-
+  ผู้ช่วยความจำและการดูแลผู้ป่วย — จำ เตือน บันทึก เตรียมตัว ส่งต่อ
+  ความเสี่ยงหลักไม่ใช่การทำลายข้อมูล แต่คือ **การทำให้ข้อมูลที่ไม่ยืนยันกลายเป็นคำสั่งทางการแพทย์**
+
+capability_requirement:
+  required:
+    - long_context
+  constraints:
+    max_cost_usd: 0.5
+
+tools:
+  allow:
+    - care.orientation.brief
+    - care.routine.list_today
+    - care.medication.list_active
+    - care.medication.propose_change
+    - care.journal.record
+    - care.journal.list_open_questions
+    - care.appointment.next
+    - care.appointment.prep_status
+    - care.reminder.acknowledge
+    - care.caregiver.notify
+  deny:
+    # 🔒 ไม่มีทางที่ agent จะเขียน regimen เองได้ ต่อให้ policy ของ tenant เผลอเปิด
+    - care.medication.write_regimen
+    - care.medication.stop
+    - care.diagnosis.any
+    - care.consent.grant
+    - fs.file.write
+    - shell.execute
+
+execution:
+  preferred_mode: any
+  min_observability_depth: step    # โดเมนนี้ต้อง audit ละเอียดถึงระดับ step
+  max_duration_seconds: 60
+  max_attempts: 2
+
+policy:
+  authority_map:
+    low: auto
+    medium: notify
+    high: approval_required
+    critical: human_command_required
+  deny_capabilities:
+    - shell
+    - code_execution
+    - filesystem
+    - network_egress
+    - autonomous_execution
+
+budget:
+  max_cost_usd_per_execution: 0.5
+  max_cost_usd_per_day: 50.0
+
+delegation:
+  enabled: false
+
+artifact_retention_days: 365

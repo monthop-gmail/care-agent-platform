@@ -1,0 +1,61 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/consent/v1/consent.schema.yaml
+title: Consent Grant
+description: >-
+  ความยินยอมให้เข้าถึงข้อมูลผู้ป่วย — 5 มิติ: who · can access · which data · for what purpose · for how long
+  🔒 การเป็นญาติ/ผู้ดูแล **ไม่ให้สิทธิ์อะไรโดยอัตโนมัติ** ต้องมี grant เสมอ (ADR-0007)
+
+$defs:
+  Scope:
+    description: >-
+      แยกตามความอ่อนไหว ไม่ใช่ก้อนเดียว — `location` และ `clinical` เป็นคนละชั้นกับ `routine`
+      default ของ grant ใหม่คือ **ไม่ได้อะไรเลย** ต้องเลือกทีละ scope
+    enum:
+      - routine.read
+      - meal.read
+      - medication.read
+      - appointment.read
+      - journal.read
+      - location.read
+      - clinical.read
+      - care.manage
+
+  Purpose:
+    enum: [daily_care, clinical_care, emergency, family_awareness]
+
+type: object
+required: [grant_id, tenant_id, patient_id, grantee, scopes, purpose, granted_by, granted_at]
+properties:
+  grant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  grantee:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+  scopes:
+    type: array
+    minItems: 1
+    items: { $ref: '#/$defs/Scope' }
+  purpose:
+    $ref: '#/$defs/Purpose'
+  granted_by:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+    description: ผู้ป่วยเอง หรือผู้มีอำนาจแทน — ต้องบันทึกเสมอว่าใครเป็นคนอนุญาต
+  granted_at: { type: string, format: date-time }
+  expires_at:
+    type: [string, "null"]
+    format: date-time
+    description: null = จนกว่าจะเพิกถอน
+  revoked_at:
+    type: [string, "null"]
+    format: date-time
+    description: 🔒 การเพิกถอนมีผลทันที ไม่ใช่รอ session หมดอายุ
+
+consent_rules:
+  rules:
+    - "consent ข้าม tenant ไม่ได้ทุกกรณี — tenant เป็นขอบเขต isolation แข็ง"
+    - "การให้ ใช้ และเพิกถอน consent ต้องออก audit event ทุกครั้ง"
+    - "grant ที่หมดอายุหรือถูกเพิกถอนแล้ว ห้ามนำกลับมาใช้ซ้ำ ต้องสร้างใหม่"
+    - "ข้อยกเว้นฉุกเฉินใช้ได้เฉพาะ severity critical และต้องแจ้งย้อนหลังเสมอ (ADR-0007 ข้อ 5)"

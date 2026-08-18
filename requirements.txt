@@ -1,0 +1,3 @@
+# dependency เพิ่มเติมของ app repo นี้ (นอกเหนือจาก pstack)
+# pstack ดึงมาให้แล้ว: fastapi, sqlalchemy, alembic, pydantic, arq, redis, anthropic, httpx
+PyYAML>=6.0          # อ่าน policies/*.yaml — ไม่พึ่ง extra ของ uvicorn โดยบังเอิญ

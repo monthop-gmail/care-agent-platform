@@ -1,0 +1,15 @@
+# ตั้งค่าให้ตรงกับ pstack (line-length 100) + ข้อยกเว้นที่จำเป็นของ repo นี้
+line-length = 100
+target-version = "py311"
+
+[lint]
+ignore = [
+    "BLE001",  # except Exception — ตั้งใจใช้ในจุด resilience (drift check, timezone fallback)
+    "RUF012",
+    "C408",
+    "ISC004",
+]
+
+[lint.per-file-ignores]
+# __manifest__.py เป็น dict literal ตามสัญญาของ pstack loader (อ่านด้วย ast.literal_eval)
+"care_addons/*/__manifest__.py" = ["B018"]

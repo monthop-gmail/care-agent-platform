@@ -1,0 +1,56 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/activity/v1/activity.schema.yaml
+title: Multi-step Activity
+description: >-
+  งานที่ "เริ่มได้แต่ทำไม่จบ" — ซักผ้า ทำอาหาร เตรียมตัวไปหาหมอ
+  หลักการ: **Agent ต้องช่วยทำให้จบ ไม่ใช่แค่เตือนให้เริ่ม**
+
+$defs:
+  Step:
+    type: object
+    required: [step_id, label, state]
+    properties:
+      step_id:
+        $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+      label: { type: string }
+      state:
+        $ref: https://schemas.care-agent-platform.internal/escalation/v1/escalation.schema.yaml#/$defs/TaskState
+      awaits_external_event:
+        type: string
+        description: >-
+          ขั้นที่ต้องรอสัญญาณจากภายนอก เช่น เครื่องซักผ้าทำงานเสร็จ
+          ถ้าไม่มี integration ให้ถามผู้ป่วยแทน — ห้ามเดาว่าเสร็จแล้ว
+      stalled_after_minutes:
+        type: integer
+        description: ค้างเกินเท่านี้ = ขั้นนี้ติดขัด → เตือน → caregiver
+
+type: object
+required: [activity_id, tenant_id, patient_id, activity_type, state, steps]
+properties:
+  activity_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  activity_type:
+    enum: [laundry, cooking, cleaning, bathing, appointment_prep, exercise, custom]
+  state:
+    $ref: https://schemas.care-agent-platform.internal/escalation/v1/escalation.schema.yaml#/$defs/TaskState
+  steps:
+    type: array
+    minItems: 1
+    items: { $ref: '#/$defs/Step' }
+  context_checks:
+    type: array
+    description: >-
+      สิ่งที่ควรดูก่อนเริ่ม เช่น พยากรณ์อากาศก่อนซักผ้า
+      🔒 เป็นข้อมูลประกอบ **ห้ามใช้ห้ามผู้ป่วยทำ** — เสนอได้ ตัดสินใจไม่ได้
+    items: { enum: [weather, time_of_day, machine_status, existing_tasks, care_plan] }
+
+activity_rules:
+  rules:
+    - "งานที่เครื่องทำเสร็จแล้วแต่ผู้ป่วยยังไม่ทำขั้นถัดไป = ยังไม่ completed"
+    - "ขั้นที่ค้างเกิน stalled_after_minutes → care.task.stalled → เตือน → caregiver"
+    - "ห้ามสรุปว่า 'ผู้ป่วยแย่ลง' จากงานที่ทำไม่จบ — รายงานเป็นจำนวนงานที่ค้างเท่านั้น"
+    - "ระบบเสนอเวลาที่เหมาะกว่าได้ แต่ห้ามบล็อกไม่ให้ผู้ป่วยทำ"

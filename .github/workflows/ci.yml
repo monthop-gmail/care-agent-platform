@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Clone pstack (pinned ref)
+        run: |
+          PSTACK_REF=$(grep '^PSTACK_REF=' .env.example | cut -d= -f2)
+          echo "pinning pstack @ $PSTACK_REF"
+          git clone --depth 1 --branch "$PSTACK_REF" \
+            https://github.com/willpower-institute/pstack.git pstack_src
+
+      - name: Install
+        run: |
+          pip install -e "./pstack_src[dev]"
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check care_addons/ tests/ conformance/ examples/
+
+      - name: Contract conformance (agent-platform)
+        run: python conformance/drift_check.py
+
+      - name: Test
+        run: pytest tests/ -q

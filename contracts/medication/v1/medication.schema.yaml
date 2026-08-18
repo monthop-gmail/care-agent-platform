@@ -1,0 +1,76 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/medication/v1/medication.schema.yaml
+title: Medication Version
+description: >-
+  หนึ่งเวอร์ชันของคำสั่งใช้ยา — 🔒 **append-only ห้าม UPDATE ห้าม DELETE** (ADR-0005)
+  เปลี่ยนได้แค่ `status` เป็น `superseded` พร้อม `superseded_by`
+
+$defs:
+  RelationToMeal:
+    description: 🔒 structured data เท่านั้น — ห้ามให้ LLM แปลงข้อความอิสระมาเป็นค่านี้เองแล้วเขียน DB
+    enum: [before_meal, with_meal, after_meal, empty_stomach, bedtime, morning, as_needed, specific_time]
+
+  InstructionSource:
+    description: >-
+      ต้องรู้เสมอว่าข้อมูลมาจากไหน — `patient_entry` มีน้ำหนักไม่เท่า `doctor_instruction`
+      และ UI ต้องแสดงต่างกัน
+    enum: [doctor_instruction, pharmacy_label, hospital_document, caregiver_entry, patient_entry]
+
+  Status:
+    enum: [proposed, active, superseded, stopped, needs_reconciliation]
+
+  Schedule:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required: [time, relation_to_meal]
+      properties:
+        time: { type: string, pattern: '^[0-2][0-9]:[0-5][0-9]$' }
+        relation_to_meal: { $ref: '#/$defs/RelationToMeal' }
+        dose: { type: string, description: "เช่น '1 tablet', '0.5 tablet' — เก็บตามที่สั่งมา ห้ามคำนวณเอง" }
+
+type: object
+required: [version_id, medication_id, tenant_id, patient_id, name, status, instruction_source, effective_from]
+properties:
+  version_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  medication_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+    description: คงที่ตลอดอายุของยาตัวนี้ — chain ของ version ผูกกันด้วย id นี้
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  name: { type: string }
+  route: { type: string, description: "oral, topical, ..." }
+  schedule: { $ref: '#/$defs/Schedule' }
+  status: { $ref: '#/$defs/Status' }
+  instruction_source: { $ref: '#/$defs/InstructionSource' }
+  prescribed_by:
+    type: object
+    description: หมอคนไหนสั่ง — ผู้ป่วยมีหมอหลายคน และคำสั่งอาจขัดกัน
+    properties:
+      doctor_name: { type: string }
+      specialty: { type: string }
+      facility: { type: string }
+  effective_from: { type: string, format: date-time }
+  superseded_by:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  reason:
+    type: string
+    description: เหตุผลที่เปลี่ยน (ตามที่คนบันทึก) — ไม่ใช่ข้อสรุปของ AI
+  confirmed_by:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+    description: >-
+      🔒 version ที่ status เป็น `active` ต้องมีค่านี้เสมอ — AI สร้างได้แค่ `proposed`
+      (ADR-0006: medication ทุก action เป็น human_command_required)
+
+medication_rules:
+  rules:
+    - "ห้าม UPDATE/DELETE แถวเก่า — สร้างเวอร์ชันใหม่แล้ว mark ของเก่าเป็น superseded"
+    - "คำถาม 'ตอนนี้ต้องกินยังไง' ตอบจาก version ที่ active เท่านั้น"
+    - "AI สร้างได้เฉพาะ status: proposed — ต้องมีคนยืนยันจึงเป็น active"
+    - "มีมากกว่าหนึ่ง active version ของสารตัวเดียวกัน = conflict → needs_reconciliation ห้ามเลือกข้างเอง"
+    - "ห้ามคำนวณ/รวม/แปลงขนาดยาเอง — เก็บตามที่ผู้สั่งระบุ"
+    - "ทุกการสร้างเวอร์ชันออก event care.medication.changed"

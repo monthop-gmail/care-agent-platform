@@ -1,0 +1,53 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/careplan/v1/careplan.schema.yaml
+title: Care Plan Task
+description: >-
+  คำแนะนำหลังพบหมอที่ต้องทำต่อเนื่อง (เดินออกกำลัง · ดื่มน้ำเพิ่ม · ใช้ยานวด · มาตรวจซ้ำ)
+  🔒 มาจาก **คำสั่งของผู้มีอำนาจ** เท่านั้น — ระบบไม่คิด care plan เอง (ADR-0006)
+
+$defs:
+  TaskType:
+    enum: [exercise, hydration, topical_treatment, wound_care, diet, sleep, follow_up, restriction, other]
+
+  Frequency:
+    type: object
+    required: [type]
+    properties:
+      type: { enum: [daily, times_per_day, weekly, once, ongoing] }
+      times: { type: integer, minimum: 1 }
+
+type: object
+required: [task_id, tenant_id, patient_id, task_type, source, frequency, status]
+properties:
+  task_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  task_type: { $ref: '#/$defs/TaskType' }
+  description: { type: string, description: "ตามที่หมอสั่ง/คนบันทึก" }
+  duration_minutes: { type: integer }
+  frequency: { $ref: '#/$defs/Frequency' }
+  source:
+    type: object
+    required: [kind]
+    description: 🔒 ต้องรู้เสมอว่าคำสั่งนี้มาจากไหน
+    properties:
+      kind: { enum: [doctor_visit, hospital_document, caregiver_entry] }
+      appointment_id:
+        $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+      confirmed_by:
+        $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+  start_date: { type: string, format: date }
+  end_date:
+    type: [string, "null"]
+    format: date
+    description: null = long-running จนกว่าจะทบทวนในนัดครั้งหน้า
+  status: { enum: [proposed, active, paused, completed, cancelled] }
+
+careplan_rules:
+  rules:
+    - "AI สร้างได้แค่ proposed — ต้องมีคนยืนยันจึง active"
+    - "รายงาน adherence ต้องอิงบันทึกจริงเท่านั้น ไม่มีบันทึก = บอกว่าไม่มีข้อมูลเพียงพอ"
+    - "ห้ามระบบออกแบบ diet/exercise เอง — เก็บตามคำสั่งที่ได้รับ"

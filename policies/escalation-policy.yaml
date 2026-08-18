@@ -1,0 +1,33 @@
+# กติกาการเตือนซ้ำและการส่งต่อ — กัน notification storm (architecture/risk-model.md)
+
+policy_id: care.escalation.v1
+
+reminder:
+  max_attempts: 3            # เกินนี้ห้ามเตือนซ้ำอีก — ต้อง escalate หรือปิดรอบ
+  backoff_minutes: [10, 20]  # ระยะห่างระหว่างครั้งที่ 1→2 และ 2→3
+  ask_directly_on_attempt: 3 # ครั้งสุดท้ายให้ถามตรง ๆ ว่า "ทำแล้วหรือยัง"
+
+quiet_hours:
+  respect_for_severity: [low, medium, high]   # critical เท่านั้นที่ข้ามได้
+
+escalation:
+  # ลำดับที่ลอง — ไม่ส่งพร้อมกันทุกคน ยกเว้น critical
+  order: [primary_caregiver, secondary_caregiver, emergency_contact]
+  wait_between_targets_minutes: 15
+  stop_on_acknowledged: true                  # caregiver รับเรื่องแล้วหยุดทันที
+
+  by_severity:
+    low:      { notify_caregiver: false, include_in_daily_summary: true }
+    medium:   { notify_caregiver: true,  after_max_attempts: true }
+    high:     { notify_caregiver: true,  immediately: true }
+    critical: { notify_all: true, allow_consent_exception: true, notify_patient_afterwards: true }
+
+aggregation:
+  # หลาย job ที่พลาดพร้อมกันของผู้ป่วยคนเดียว รวมเป็นการแจ้งครั้งเดียว
+  window_minutes: 30
+  group_by: [patient_id, severity]
+
+daily_summary:
+  send_at: "20:00"
+  include: [meals, medication, activities, appointments, safety, stalled_tasks]
+  # 🔒 รายงานเป็นข้อเท็จจริงที่วัดได้เท่านั้น ห้ามตีความอาการ (ADR-0004 ข้อ 4)

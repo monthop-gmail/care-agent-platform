@@ -1,0 +1,71 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        PSTACK_REF: ${PSTACK_REF:-v0.1.0}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - default
+      # deploy จริงหลัง Caddy กลาง: เปิดบรรทัดล่าง + ลบ ports: ด้านบน
+      # - odoo-public
+
+  worker:
+    build:
+      context: .
+      args:
+        PSTACK_REF: ${PSTACK_REF:-v0.1.0}
+    restart: unless-stopped
+    command: arq core.worker.WorkerSettings
+    env_file: .env
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - default
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - default
+
+volumes:
+  pgdata:
+  uploads:
+
+networks:
+  default:
+  # odoo-public:
+  #   external: true

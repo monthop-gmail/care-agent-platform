@@ -1,0 +1,50 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/routine/v1/routine.schema.yaml
+title: Routine Item
+description: >-
+  กิจวัตรประจำวันหนึ่งรายการ — reminder ที่เกิดจากรายการนี้เป็น **closed loop**
+  ไม่ใช่ notification ที่ส่งแล้วจบ (ดู `escalation/v1`)
+
+$defs:
+  Kind:
+    enum: [wake, meal, medication, activity, hygiene, rest, sleep, hydration, custom]
+
+  Recurrence:
+    type: object
+    required: [type]
+    properties:
+      type:
+        enum: [daily, weekly, specific_days, once]
+      days_of_week:
+        type: array
+        items: { type: integer, minimum: 0, maximum: 6 }
+
+type: object
+required: [routine_id, tenant_id, patient_id, kind, scheduled_time, recurrence]
+properties:
+  routine_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  kind: { $ref: '#/$defs/Kind' }
+  label:
+    type: string
+    description: ข้อความที่ผู้ป่วยเห็น — ใช้คำง่าย ๆ ไม่ใช่ศัพท์ระบบ
+  scheduled_time:
+    type: string
+    pattern: '^[0-2][0-9]:[0-5][0-9]$'
+    description: เวลาตาม timezone ของผู้ป่วย ไม่ใช่ของ server
+  recurrence: { $ref: '#/$defs/Recurrence' }
+  grace_minutes:
+    type: integer
+    default: 30
+    description: รอนานเท่าไรก่อนถือว่ายังไม่ทำ — ต่อรายการ ไม่ใช่ค่าเดียวทั้งระบบ
+  enabled: { type: boolean, default: true }
+
+routine_rules:
+  rules:
+    - "ไม่มีการยืนยัน = ยังไม่ทำ — ห้ามอนุมานว่าทำแล้วเพราะเวลาผ่านไป (ADR-0006 ข้อ 5)"
+    - "reminder ที่เกิดจาก routine ต้องสร้างเป็น care job ที่มีสถานะ ไม่ใช่ข้อความลอย"
+    - "ยาที่ผูกกับมื้ออาหารต้องอ้าง medication version ที่ active ไม่ใช่ copy ข้อมูลยามาเก็บซ้ำ"

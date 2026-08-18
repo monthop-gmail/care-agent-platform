@@ -1,0 +1,58 @@
+# action_risk × authority — 🔒 ต้องเป็น config ห้าม hard-code (agent-platform ADR-0010)
+#
+# tenant ตั้งให้ "เข้มขึ้น" ได้เสมอ แต่ลดต่ำกว่าเพดานใน `floor` ไม่ได้
+# ถ้า config พยายามลดกว่าเพดาน → boot ไม่ผ่าน (fail closed)
+
+policy_id: care.default.v1
+
+# ค่าเริ่มต้นของทุก tenant
+authority_map:
+  low: auto
+  medium: notify
+  high: approval_required
+  critical: human_command_required
+
+# ค่าที่ไม่รู้จัก → fallback (policy/v1 · capability/v1)
+fallback:
+  authority: human_command_required
+  action_risk: critical
+
+# เพดานที่ config ของ tenant ลดกว่านี้ไม่ได้ (ADR-0006)
+floor:
+  capabilities:
+    # 🔒 เฉพาะการ "เขียน/หยุด" ใบยา — ไม่ใช่ medication.* ทั้งหมด
+    #    การเตือนกินยาเป็น low/auto และการเสนอ (propose) เป็น medium
+    #    ถ้าเผลอตั้งเป็น medication.* ระบบจะเตือนกินยาไม่ได้เลย (มี test กันไว้)
+    "medication.regimen.write": human_command_required
+    "medication.regimen.stop": human_command_required
+    "clinical.export": approval_required
+  risk:
+    critical: human_command_required
+
+# action_risk ของแต่ละ capability — static ผูกกับ capability ไม่ใช่กับ request
+capabilities:
+  routine.reminder.send:        { action_risk: low }
+  meal.reminder.send:           { action_risk: low }
+  appointment.reminder.send:    { action_risk: low }
+  orientation.brief.send:       { action_risk: low }
+  journal.entry.write:          { action_risk: low }
+  question.entry.write:         { action_risk: low }
+
+  caregiver.notify:             { action_risk: medium }
+  care.profile.update:          { action_risk: medium }   # เปิด/ปิดความสามารถของผู้ป่วย
+  careplan.task.write:          { action_risk: medium }
+  activity.step.record:         { action_risk: medium }
+  inventory.item.write:         { action_risk: medium }
+
+  medication.reminder.send:     { action_risk: low }
+  medication.regimen.propose:   { action_risk: medium }
+  medication.regimen.write:     { action_risk: high }
+  medication.regimen.stop:      { action_risk: critical }
+  clinical.export:              { action_risk: high }
+
+  emergency.escalate:
+    action_risk: critical
+    # ข้อยกเว้นเดียวที่ critical ไม่ใช่ human_command_required — ความเร็วสำคัญกว่า
+    # แต่ต้อง audit เต็มและแจ้งย้อนหลังเสมอ (ADR-0007 ข้อ 5)
+    override_authority: notify
+    requires_full_audit: true

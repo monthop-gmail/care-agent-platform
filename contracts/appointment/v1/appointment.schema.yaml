@@ -1,0 +1,65 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/appointment/v1/appointment.schema.yaml
+title: Appointment
+description: >-
+  นัดหมาย + **กระบวนการไปพบหมอ** ไม่ใช่แค่วันเวลา
+  ผู้ป่วยอาจจำวันนัดได้แต่ไม่รู้ว่าต้องเตรียมอะไร — preparation จึงเป็นส่วนหนึ่งของ contract นี้
+
+$defs:
+  PreparationStep:
+    description: >-
+      ขั้นเตรียมตัวหนึ่งขั้น — 🔒 ข้อกำหนดทางการแพทย์ (เช่นงดอาหาร) ต้องมี `source_document`
+      **ห้ามให้ระบบเดาเองว่าต้อง fasting กี่ชั่วโมง**
+    type: object
+    required: [step_id, kind, status]
+    properties:
+      step_id:
+        $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+      kind:
+        enum:
+          - instructions_acknowledged
+          - documents_ready
+          - clothes_ready
+          - medication_ready
+          - fasting_requirement
+          - transport_ready
+          - ready_to_leave
+      due_at: { type: string, format: date-time }
+      status:
+        enum: [pending, done, skipped, needs_help]
+      source_document:
+        type: string
+        description: 🔒 บังคับเมื่อ kind = fasting_requirement — อ้างเอกสารของสถานพยาบาลเท่านั้น
+
+type: object
+required: [appointment_id, tenant_id, patient_id, starts_at, status]
+properties:
+  appointment_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  starts_at: { type: string, format: date-time }
+  doctor_name: { type: string }
+  specialty:
+    type: string
+    description: ใช้ดึง journal/คำถามที่เกี่ยวข้องมาทำ visit brief — ไม่ใช่การจัดหมวดโรค
+  facility: { type: string }
+  purpose: { type: string, description: "เช่น 'ตรวจเลือด' — ตามที่คนบันทึก" }
+  preparation:
+    type: array
+    items: { $ref: '#/$defs/PreparationStep' }
+  status:
+    enum: [scheduled, preparing, ready, completed, missed, cancelled]
+  reminder_offsets_hours:
+    type: array
+    items: { type: integer }
+    default: [24, 2]
+
+appointment_rules:
+  rules:
+    - "preparation step ที่ค้างเกินกำหนดต้อง escalate ไป caregiver ไม่ใช่เตือนผู้ป่วยซ้ำไปเรื่อย ๆ"
+    - "ผู้ป่วยตอบว่า 'ทำแล้ว' = status done แต่ต้องบันทึก evidence.kind = patient_confirmed"
+    - "visit brief สร้างจาก journal + คำถาม + medication chain ที่มีอยู่จริงเท่านั้น ห้ามเติมเนื้อหาเอง"
+    - "ห้ามระบบสร้าง fasting requirement เองโดยไม่มี source_document"
