@@ -36,6 +36,7 @@ async def create_patient(
     channels: list[str] | None = None,
     patient_id: str | None = None,
     quiet_hours: tuple[str, str] | None = None,
+    home_label: str | None = None,
 ) -> CarePatient:
     profile = dict(DEFAULT_CARE_PROFILE)
     for key, value in (care_profile or {}).items():
@@ -51,6 +52,7 @@ async def create_patient(
         timezone=timezone,
         care_profile=profile,
         channels=list(channels or ["app"]),
+        home_label=home_label,
         quiet_hours_start=quiet_hours[0] if quiet_hours else None,
         quiet_hours_end=quiet_hours[1] if quiet_hours else None,
     )

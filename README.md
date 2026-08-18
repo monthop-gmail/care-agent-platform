@@ -39,8 +39,9 @@ repo นี้เก็บเฉพาะ **addons ของตัวเอง**
 
 ## สถานะ
 
-**M1 เสร็จ · M2 เสร็จบางส่วน** — closed loop เดินได้เต็มวงแล้ว (เตือน → ยืนยัน → เตือนซ้ำ →
-พลาด → ส่งต่อผู้ดูแล) พร้อม tenant isolation, consent, policy engine และ audit trail
+**M1 เสร็จ · M2 เสร็จ** — closed loop เดินได้เต็มวง (เตือน → ยืนยัน → เตือนซ้ำ → พลาด →
+ส่งต่อผู้ดูแล) พร้อม tenant isolation, consent, policy engine, audit trail, medication
+version chain, health journal, นัดหมาย + การเตรียมตัวไปพบหมอ และ orientation/daily brief
 ดูรายละเอียดและงานที่ค้างที่ [`architecture/team-plan.md`](architecture/team-plan.md)
 
 ## เริ่มต้น

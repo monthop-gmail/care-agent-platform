@@ -48,6 +48,11 @@ properties:
     $ref: '#/$defs/CareProfile'
   channels:
     $ref: '#/$defs/ChannelPreference'
+  home_label:
+    type: string
+    description: >-
+      สถานที่ที่ผู้ป่วยอยู่เป็นปกติ ใช้ตอบชั้น PLACE ของ orientation ("ตอนนี้อยู่ที่บ้านครับ")
+      🔒 มาจากค่าที่ผู้ดูแลตั้งไว้เท่านั้น — ห้ามอนุมานจาก IP/GPS แล้วบอกผู้ป่วยว่าอยู่ที่ไหน
   quiet_hours:
     type: object
     description: ช่วงเวลาที่ห้ามรบกวน ยกเว้น severity critical

@@ -35,11 +35,14 @@ capabilities:
   meal.reminder.send:           { action_risk: low }
   appointment.reminder.send:    { action_risk: low }
   orientation.brief.send:       { action_risk: low }
+  orientation.answer:           { action_risk: low }   # ตอบว่าวันนี้วันอะไร/ต้องทำอะไร
+  appointment.prep.write:       { action_risk: low }   # บันทึกว่าเตรียมตัวถึงขั้นไหนแล้ว
   journal.entry.write:          { action_risk: low }
   question.entry.write:         { action_risk: low }
 
   caregiver.notify:             { action_risk: medium }
   care.profile.update:          { action_risk: medium }   # เปิด/ปิดความสามารถของผู้ป่วย
+  appointment.write:            { action_risk: medium }   # สร้าง/ปิดนัดหมาย
   careplan.task.write:          { action_risk: medium }
   activity.step.record:         { action_risk: medium }
   inventory.item.write:         { action_risk: medium }

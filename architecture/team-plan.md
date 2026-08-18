@@ -22,7 +22,6 @@ care_addons/
 ├── care_journal/     ทีม C   อาการ/เหตุการณ์/คำถามถึงหมอ + visit brief
 ├── care_careplan/    ทีม C   คำสั่งหลังพบหมอ → task ต่อเนื่อง (เดิน/ดื่มน้ำ/ยานวด)
 ├── care_orientation/ ทีม C   วันนี้วันอะไร/อยู่ไหน/ต้องทำอะไร + daily brief
-├── care_appt_prep/   ทีม C   preparation checklist (เอกสาร/แต่งตัว/fasting/เดินทาง)
 │
 ├── care_activity/    ทีม D   task continuity หลายขั้นตอน (ซักผ้า ทำอาหาร)
 ├── care_inventory/   ทีม D   ของกิน/ของใช้ + วันหมดอายุ + กันซื้อซ้ำ
@@ -84,7 +83,13 @@ M6 ── Multi-organization (A+E)
 | `care_routine` | ✅ routine/มื้ออาหาร → materialize เป็น job (idempotent) + แผนวันนี้ |
 | `care_medication` | ✅ version chain, meal relation, prescriber, conflict detection, reconciliation summary |
 | `care_journal` | ✅ อาการ/คำถามถึงหมอ + visit brief |
-| `ap_approval` · `care_appointment` · `care_appt_prep` · `care_careplan` · `care_orientation` · `care_activity` · `care_inventory` · `care_home` · `care_safety` · `care_orchestrator` | ⬜ ยังไม่เริ่ม |
+| `care_appointment` | ✅ นัดหมาย + reminder ล่วงหน้า + **preparation checklist** + visit brief + บันทึกผลหลังพบหมอ |
+| `care_orientation` | ✅ 5 ชั้น (เวลา/วันที่/สถานที่/คน/แผน) + daily brief + temporal memory ("พรุ่งนี้") |
+| `ap_approval` · `care_careplan` · `care_activity` · `care_inventory` · `care_home` · `care_safety` · `care_orchestrator` | ⬜ ยังไม่เริ่ม |
+
+> **หมายเหตุ:** `care_appt_prep` ที่เคยวางไว้แยก ถูกรวมเข้า `care_appointment` แล้ว
+> เพราะ `contracts/appointment/v1` นิยาม `PreparationStep` เป็นส่วนหนึ่งของนัดหมาย
+> และการแยก addon จะทำให้ต้อง import model ข้ามกันซึ่งผิดกติกาข้อ 4 — **อย่าสร้างซ้ำ**
 
 **งานที่ต้องทำก่อน production (เรียงตามความเร่งด่วน):**
 

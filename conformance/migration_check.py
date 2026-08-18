@@ -33,7 +33,7 @@ os.environ.setdefault("PSTACK_SECRET_KEY", "migration-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,ap_tenancy,ap_audit,ap_policy,care_patient,care_escalation,"
-    "care_routine,care_medication,care_journal",
+    "care_routine,care_medication,care_journal,care_appointment,care_orientation",
 )
 
 IGNORED_TABLE_PREFIXES = ("alembic_version",)
@@ -61,7 +61,9 @@ async def main() -> int:
     from core.registry import create_core_tables, sync_modules
     from core.runtime import ctx
 
-    logging.getLogger().setLevel(logging.WARNING)   # เอา log การติดตั้งโมดูลออก เหลือแต่ผลตรวจ
+    logging.getLogger().setLevel(
+        logging.INFO if os.environ.get("MIGRATION_CHECK_VERBOSE") else logging.WARNING
+    )
 
     url = os.environ["PSTACK_DATABASE_URL"]
     if url.startswith("sqlite") and CHECK_DB.exists():

@@ -19,5 +19,9 @@ def test_platform_and_care_routes_mounted(client):
         "/api/care/patients",
         "/api/care/routines",
         "/api/care/jobs/tick",
+        "/api/care/appointments",
+        "/api/care/appointments/{appointment_id}/visit-brief",
+        "/api/care/orientation/daily-brief",
+        "/api/care/orientation/date",
     ]:
         assert path in paths, f"ไม่พบ route {path}"

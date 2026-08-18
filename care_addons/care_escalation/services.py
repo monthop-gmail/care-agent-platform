@@ -41,7 +41,8 @@ SEND_CAPABILITY = {
 CONFIRMED_EVENT = {
     "meal": "care.meal.confirmed",
     "medication": "care.medication.confirmed",
-    "appointment": "care.appointment.completed",
+    # 🔒 ไม่ map appointment ที่นี่ — "รับทราบว่ามีนัด" ไม่ได้แปลว่า "ไปพบหมอมาแล้ว"
+    #    care.appointment.completed ออกได้จาก care_appointment.complete_appointment() เท่านั้น
 }
 MISSED_EVENT = {
     "meal": "care.meal.missed",
@@ -525,6 +526,28 @@ async def caregiver_acknowledge(session: AsyncSession, scope: TenantScope, care_
     )
     await _complete(session, scope, job, "caregiver acknowledged")
     return job
+
+
+async def jobs_for_source(
+    session: AsyncSession,
+    scope: TenantScope,
+    *,
+    source_kind: str,
+    source_id: str,
+    due_at: datetime | None = None,
+) -> list[CareJob]:
+    """หา care job ที่ addon อื่นสร้างไว้จากของของตัวเอง
+
+    มีไว้เพื่อให้ addon โดเมนไม่ต้อง `import ... models import CareJob` ข้าม addon
+    (กติกาใน architecture/team-plan.md — คุยกันผ่าน service function เท่านั้น)
+    """
+    stmt = select(CareJob).where(
+        CareJob.source_kind == source_kind, CareJob.source_id == source_id
+    )
+    if due_at is not None:
+        stmt = stmt.where(CareJob.due_at == due_at)
+    result = await session.execute(scoped(stmt.order_by(CareJob.due_at), CareJob, scope))
+    return list(result.scalars())
 
 
 async def open_jobs(

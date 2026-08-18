@@ -35,6 +35,8 @@ class CarePatient(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Bangkok")
     care_profile: Mapped[dict] = mapped_column(JSON, default=lambda: dict(DEFAULT_CARE_PROFILE))
     channels: Mapped[list] = mapped_column(JSON, default=lambda: ["app"])
+    # ชั้น PLACE ของ orientation — "ตอนนี้อยู่ที่ไหน" ต้องตอบจากค่าที่คนตั้งไว้ ไม่ใช่เดาจาก IP/GPS
+    home_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     quiet_hours_start: Mapped[str | None] = mapped_column(String(5), nullable=True)
     quiet_hours_end: Mapped[str | None] = mapped_column(String(5), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active")

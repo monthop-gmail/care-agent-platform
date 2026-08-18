@@ -23,6 +23,8 @@ CI รันชุดนี้ **สองรอบ** (matrix `sqlite` + `postgr
 | `test_boot.py` | ทุกโมดูลโหลดได้และ route ถูก mount |
 | `test_scenario_care_loop.py` | **S1** ยืนยันแล้วจบวง · **S2** เงียบ → retry → missed → caregiver · เพดานการเตือน · caregiver รับเรื่องแล้วหยุด |
 | `test_scenario_medication.py` | **S4** ยาชนกันไม่เลือกข้าง · **S9** agent แก้ยาเองไม่ได้ · version chain แบบ append-only · สรุปยาก่อนพบหมอ |
+| `test_scenario_appointment.py` | **S5** เตรียมตัวไปพบหมอทีละขั้น · ขั้นที่ค้าง → caregiver · fasting ต้องมีเอกสาร · "รับทราบว่ามีนัด" ≠ "ไปมาแล้ว" · visit brief |
+| `test_scenario_orientation.py` | **S3** ถามวันที่ซ้ำ 3 ครั้งได้คำตอบเดิม (และไม่มีถ้อยคำตำหนิ) · ชั้นที่ไม่มีข้อมูลบอกว่าไม่มี · daily brief · temporal memory ("พรุ่งนี้") |
 | `test_governance.py` | **S7** ไม่มีหลักฐาน = ไม่มีข้อมูล · **S8** ข้าม tenant ไม่ได้ · consent · การปฏิเสธ event ที่ ground ไม่ได้ · quiet hours |
 | `test_architecture_rules.py` | กฎ 4 ข้อของ `ap_*` (ADR-0003) · ทุก capability ต้องมี risk ใน policy · ห้าม `datetime.now()` ตรง |
 | `test_api_end_to_end.py` | ทั้งเส้นผ่าน HTTP จริง — login → tenant → patient → routine → tick → ack → audit |

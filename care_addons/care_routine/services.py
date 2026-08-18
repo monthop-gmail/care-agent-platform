@@ -150,9 +150,16 @@ async def materialize_day(
 
 async def today_plan(session: AsyncSession, scope: TenantScope, patient_id: str) -> list[dict]:
     """แผนวันนี้แบบที่ผู้ป่วยเห็น — สถานะมาจาก job จริง ไม่ใช่การเดา"""
+    return await plan_for_date(session, scope, patient_id)
+
+
+async def plan_for_date(
+    session: AsyncSession, scope: TenantScope, patient_id: str, day: date | None = None
+) -> list[dict]:
+    """แผนของวันที่ระบุ — ใช้ตอบคำถามแบบ "พรุ่งนี้ต้องทำอะไร" โดยไม่ต้องเดา"""
     patient = await get_patient(session, scope, patient_id)
     tz = ZoneInfo(patient.timezone or "Asia/Bangkok")
-    today = now().astimezone(tz).date()
+    today = day or now().astimezone(tz).date()
     start = datetime.combine(today, time(0, 0), tzinfo=tz).astimezone(ZoneInfo("UTC"))
     end = start + timedelta(days=1)
 
