@@ -88,8 +88,8 @@ M6 ── Multi-organization (A+E)
 
 **งานที่ต้องทำก่อน production (เรียงตามความเร่งด่วน):**
 
-1. 🔴 **ใส่ LICENSE (MIT) ที่ `willpower-institute/pstack` แล้วออก tag** — repo นี้เป็น MIT public
-   แต่ pin pstack ที่ยังไม่มีสัญญาอนุญาต ซึ่งตามกฎหมายลิขสิทธิ์คือ all rights reserved
+1. ✅ ~~ใส่ LICENSE (MIT) ที่ `willpower-institute/pstack`~~ — เสร็จ 2026-08-18,
+   pin `PSTACK_REF=v0.1.1` ซึ่งเป็น tag แรกที่มีสัญญาอนุญาต
 2. 🟠 **Alembic migration ต่อ addon** — ตอนนี้ใช้ create-table fallback ของ loader
    ซึ่งเปลี่ยน schema ทีหลังไม่ได้ (`python ../pstack/cli.py makemigration <module> -m "..."`)
 3. 🟠 **ทดสอบบน Postgres จริงใน CI** — ตอนนี้ CI รันบน sqlite เท่านั้น

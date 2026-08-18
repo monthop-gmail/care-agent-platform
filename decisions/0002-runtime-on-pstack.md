@@ -53,9 +53,11 @@ repo นี้เก็บเฉพาะ `care_addons/` แล้ว pin `PSTAC
 
 ## Consequences
 
-- **pstack ต้องมี LICENSE ก่อน repo นี้ public** — ตอนตัดสินใจ pstack ยังไม่มีไฟล์ LICENSE
-  ซึ่งตามกฎหมายลิขสิทธิ์แปลว่า all rights reserved · repo นี้เป็น MIT จึงอ้างอิงของที่ไม่มีสัญญาอนุญาตไม่ได้
-  → งานแรกของทีม A คือใส่ MIT ที่ `willpower-institute/pstack` แล้วออก tag
+- ~~**pstack ต้องมี LICENSE ก่อน repo นี้ public**~~ ✅ **จัดการแล้ว 2026-08-18** —
+  ตอนตัดสินใจ pstack ยังไม่มีไฟล์ LICENSE ซึ่งตามกฎหมายลิขสิทธิ์แปลว่า all rights reserved
+  ตอนนี้ pstack เป็น MIT แล้วและออก
+  [`v0.1.1`](https://github.com/willpower-institute/pstack/releases/tag/v0.1.1) เป็น tag แรกที่มีสัญญาอนุญาต
+  — repo นี้ pin tag นั้น
 - ทุก addon ในนี้ต้องเขียนตาม MODULE_GUIDE ของ pstack (manifest เป็น dict literal, `router: APIRouter`, hooks, migrations ต่อโมดูล)
 - test รันบน sqlite ได้โดยไม่ต้องมี Postgres — เก็บ compatibility นี้ไว้ ไม่ใช้ฟีเจอร์เฉพาะ Postgres โดยไม่มี fallback
 

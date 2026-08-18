@@ -43,10 +43,6 @@ repo นี้เก็บเฉพาะ **addons ของตัวเอง**
 พลาด → ส่งต่อผู้ดูแล) พร้อม tenant isolation, consent, policy engine และ audit trail
 ดูรายละเอียดและงานที่ค้างที่ [`architecture/team-plan.md`](architecture/team-plan.md)
 
-> ⚠️ **ก่อนใช้งานจริง:** [`pstack`](https://github.com/willpower-institute/pstack) ที่ repo นี้ pin ไว้
-> ยังไม่มีไฟล์ LICENSE — ต้องใส่ MIT แล้วออก tag ก่อน ไม่งั้น repo MIT ตัวนี้อ้างอิงของที่
-> ยังเป็น all rights reserved อยู่
-
 ## เริ่มต้น
 
 ### Docker
@@ -69,7 +65,7 @@ curl -X POST -H "X-Tenant-Id: t-demo-family" localhost:8000/api/care/jobs/tick
 ต้องมี pstack checkout ไว้ข้าง ๆ (tag เดียวกับ `PSTACK_REF`)
 
 ```bash
-git clone --branch v0.1.0 https://github.com/willpower-institute/pstack.git ../pstack
+git clone --branch v0.1.1 https://github.com/willpower-institute/pstack.git ../pstack
 python3 -m venv .venv && .venv/bin/pip install -e "../pstack[dev]"
 
 export PSTACK_ADDONS_PATHS=../pstack/addons,care_addons
