@@ -275,7 +275,13 @@ async def _deliver(
             subject_id=new_id("exec"),
             job_id=job.care_job_id,
             severity=job.severity,
-            error=f"ส่งไม่ออกทางช่องทาง {notification.channel}: {notification.delivery_error}",
+            error=audit.make_error(
+                "care.notification.delivery_failed",
+                "external_dependency",
+                f"ส่งไม่ออกทางช่องทาง {notification.channel}: {notification.delivery_error}",
+                retryable=True,
+                details={"channel": notification.channel},
+            ),
             attributes={
                 "patient_id": job.patient_id,
                 "channel": notification.channel,
@@ -355,7 +361,12 @@ async def _remind(session: AsyncSession, scope: TenantScope, job: CareJob, patie
             subject_id=new_id("exec"),
             job_id=job.care_job_id,
             policy_result=decision.as_policy_result(),
-            error="policy ไม่อนุญาตให้ agent ส่งเอง",
+            error=audit.make_error(
+                "care.policy.autonomous_send_denied",
+                "policy_denied",
+                f"policy ไม่อนุญาตให้ agent ส่งเอง (capability {capability})",
+                retryable=False,
+            ),
             attributes={"patient_id": job.patient_id, "capability": capability},
         )
         job.next_attempt_at = None
@@ -434,7 +445,12 @@ async def escalate(session: AsyncSession, scope: TenantScope, job: CareJob) -> l
             subject_id=new_id("exec"),
             job_id=job.care_job_id,
             policy_result=e.decision.as_policy_result(),
-            error="policy ไม่อนุญาตให้แจ้ง caregiver อัตโนมัติ",
+            error=audit.make_error(
+                "care.policy.escalation_denied",
+                "policy_denied",
+                "policy ไม่อนุญาตให้แจ้ง caregiver อัตโนมัติ",
+                retryable=False,
+            ),
             attributes={"patient_id": job.patient_id},
         )
         return []

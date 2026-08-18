@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from core.db import Base
-from sqlalchemy import JSON, DateTime, Index, String, Text
+from sqlalchemy import JSON, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -52,4 +52,6 @@ class ApAuditEvent(Base):
     severity: Mapped[str | None] = mapped_column(String(16), nullable=True)
     evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 🔒 ต้องเป็น object ตาม error/v1 ไม่ใช่ข้อความอิสระ — retry policy และ audit
+    #    ต้องตัดสินใจจาก category ได้โดยไม่ต้อง parse ข้อความ
+    error: Mapped[dict | None] = mapped_column(JSON, nullable=True)

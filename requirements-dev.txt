@@ -3,3 +3,4 @@ pytest>=8.0
 pytest-asyncio>=0.23   # scenario test ของโดเมนนี้เป็น async เกือบทั้งหมด
 aiosqlite>=0.20        # test รันบน sqlite ได้โดยไม่ต้องมี Postgres (architecture/stack.md)
 ruff>=0.5
+jsonschema>=4.20   # payload conformance กับ contract ของ agent-platform

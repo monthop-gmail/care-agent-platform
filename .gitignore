@@ -31,3 +31,7 @@ pstack_src/
 
 # migration drift check
 migration_check.db
+
+# schema ของ agent-platform ที่ดึงมา cache ไว้
+.schema_cache/
+payload_check.db

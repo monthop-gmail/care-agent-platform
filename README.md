@@ -99,7 +99,8 @@ export PSTACK_ADDONS_PATHS=../pstack/addons,care_addons
 .venv/bin/uvicorn main:app --reload
 
 .venv/bin/python -m pytest tests/ -q             # เทสบน sqlite (ไม่ต้องมี Postgres)
-.venv/bin/python conformance/drift_check.py      # contract ยังตรงกับ agent-platform
+.venv/bin/python conformance/drift_check.py      # contract ของเรายัง $ref ตรงกับ agent-platform
+.venv/bin/python conformance/payload_check.py    # payload จริงที่ระบบผลิต conform contract จริง
 .venv/bin/python conformance/migration_check.py  # migration ยังตรงกับ models
 ```
 
@@ -134,6 +135,21 @@ conformance/    drift check เทียบกับ contract ของ agent-pl
 tests/          scenario tests (สำคัญกว่า unit test ในโปรเจกต์นี้)
 ref/            บทสนทนา/blueprint ต้นทาง — เก็บไว้ให้ทุกทีมอ้างอิงร่วมกัน
 ```
+
+## Conformance กับ agent-platform
+
+repo นี้ประกาศตัวเป็น consumer ผ่าน [`platform-contract.yaml`](platform-contract.yaml)
+ตาม [ADR-0006 ของ agent-platform](https://github.com/monthop-gmail/agent-platform/blob/main/decisions/0006-contract-versioning.md)
+ซึ่งบังคับครบ 3 ข้อ:
+
+| ข้อกำหนด | ที่นี่ |
+|---|---|
+| manifest | [`platform-contract.yaml`](platform-contract.yaml) |
+| conformance test ที่ validate **payload จริง** | [`conformance/payload_check.py`](conformance/payload_check.py) — รัน scenario จริงหนึ่งวันของผู้ป่วย แล้วเอา audit event ที่ระบบผลิตออกมาไป validate กับ JSON Schema ของ platform ที่ commit ที่ pin ไว้ |
+| release gate | ทั้ง drift check และ payload check เป็น step ใน CI ที่รันทุก PR — ไม่ผ่าน = merge ไม่ได้ |
+
+> ต่างกันตรงนี้: `drift_check` ตอบว่า *contract ของเรา* ยังอ้างอิงถูกที่ ·
+> `payload_check` ตอบว่า *ระบบของเรา* ทำตาม contract จริง — ข้อหลังคือข้อที่ ADR-0006 นับ
 
 ## หลักการที่บังคับใช้ในโค้ด ไม่ใช่แค่เขียนไว้
 

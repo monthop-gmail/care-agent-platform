@@ -110,6 +110,7 @@ async def propose_version(
         subject_type="artifact",
         subject_id=version.version_id,
         care_event_type="care.medication.changed",
+        severity="low",   # แค่ข้อเสนอ ยังไม่มีผลกับสิ่งที่ผู้ป่วยต้องทำ
         transition={"from": None, "to": "proposed", "reason": reason or "proposed"},
         attributes={
             "record_type": "medication_version",
@@ -172,6 +173,7 @@ async def confirm_version(
         subject_type="artifact",
         subject_id=version.version_id,
         care_event_type="care.medication.changed",
+        severity="medium",   # ตารางยาของผู้ป่วยเปลี่ยนจริงตั้งแต่วินาทีนี้
         policy_result=decision.as_policy_result() if decision else None,
         evidence={"kind": "caregiver_confirmed", "recorded_by": confirmed_by.as_dict()},
         transition={"from": "proposed", "to": "active", "reason": version.reason or "confirmed"},
@@ -235,6 +237,7 @@ async def stop_medication(
         subject_type="artifact",
         subject_id=version.version_id,
         care_event_type="care.medication.changed",
+        severity="high",   # หยุดยาเป็นการเปลี่ยนแปลงที่ผู้ดูแลต้องรู้เสมอ
         policy_result=decision.as_policy_result() if decision else None,
         evidence={"kind": "caregiver_confirmed", "recorded_by": stopped_by.as_dict()},
         transition={"from": "active", "to": "stopped", "reason": reason},

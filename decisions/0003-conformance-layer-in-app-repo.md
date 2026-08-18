@@ -39,6 +39,15 @@ care_addons/
 3. ทุกชื่อตารางขึ้นต้น `ap_` และทุก public API อยู่ใต้ `/api/platform/...`
 4. schema ของ payload ต้อง `$ref` ไปที่ contract ของ `agent-platform` ไม่ใช่นิยามซ้ำ
 
+**หนี้ที่รู้ตัวแล้ว:** `ap_audit` มีคอลัมน์ชื่อ `care_event_type` ซึ่งเป็นคำของโดเมน
+(เทสตรวจเฉพาะคำว่า patient/medication/caregiver จึงไม่จับ) ตอน promote ขึ้น kernel
+ต้องเปลี่ยนเป็นชื่อกลางเช่น `domain_event_type` พร้อม migration — ยังไม่ทำตอนนี้เพราะ
+กระทบ call site จำนวนมากโดยไม่ได้ประโยชน์เพิ่มก่อนถึงวัน promote
+
+**กฎที่บังคับไม่ได้ใน `ap_*`:** ข้อกำหนดของโดเมนอย่าง "care event ทุกตัวต้องมี `patient_id`"
+เอาไปใส่ใน `ap_audit` ไม่ได้ (จะผิดกฎข้อ 1 ทันที) — บังคับที่ `conformance/payload_check.py`
+ซึ่ง validate payload จริงกับ `contracts/event/v1/care-event.schema.yaml` ใน CI แทน
+
 **หนี้ทางเทคนิคที่ตั้งใจก่อ:** เมื่อ pstack ออก Phase 5 (multi-tenant) ให้ทำ PR
 ย้าย `ap_tenancy` ขึ้น kernel แล้วเหลือ shim ในนี้ไว้หนึ่งรอบก่อนลบ — จดไว้เป็น issue ตั้งแต่วันแรก
 

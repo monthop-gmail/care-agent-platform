@@ -119,6 +119,16 @@ M6 ── Multi-organization (A+E)
 **กติกา:** เจอข้อจำกัดของ kernel ให้เปิด issue ที่ pstack แล้วเพิ่มแถวในตารางนี้
 พร้อมระบุว่าเราติดจริงหรือมี workaround — ทีมอื่นจะได้ไม่ไปชนของเดิมซ้ำ
 
+## ของที่รอฝั่ง agent-platform
+
+| upstream | เรื่อง | สถานะ |
+|---|---|---|
+| [agent-platform#14](https://github.com/monthop-gmail/agent-platform/issues/14) | `SubjectType` ไม่มีค่าสำหรับบันทึกของโดเมน | 🟡 ใช้ `artifact` + `metadata.record_type` ไปก่อน ([ADR-0004](../decisions/0004-care-event-vocabulary.md)) |
+| [agent-platform#15](https://github.com/monthop-gmail/agent-platform/issues/15) | ยังไม่มี `consent/v1` | 🟡 implement เองที่ `ap_tenancy` โดยเก็บให้ domain-free ([ADR-0007](../decisions/0007-consent-and-data-access.md)) |
+
+ทั้งสองข้อบันทึกไว้ใน [`platform-contract.yaml`](../platform-contract.yaml) ช่อง `gaps` ด้วย
+เพื่อให้ platform เห็นว่า consumer ติดอะไรอยู่โดยไม่ต้องมาถาม
+
 ## Contract-first — กติกาที่กันทีมชนกัน
 
 1. อยากได้ field ใหม่จาก addon ทีมอื่น → **แก้ `contracts/` ก่อน** แล้วค่อยเขียนโค้ด
@@ -149,7 +159,8 @@ M6 ── Multi-organization (A+E)
 - [ ] ไม่มี medical diagnosis/action ที่ไม่ได้รับอนุญาต
 - [ ] `docker compose up` รัน PoC ได้
 - [ ] มี automated scenario tests
-- [ ] เชื่อมกับ `agent-platform` ผ่าน contract ที่กำหนด (drift check ผ่าน)
+- [x] เชื่อมกับ `agent-platform` ผ่าน contract ที่กำหนด — เป็น consumer ตาม ADR-0006 ครบ 3 ข้อ
+      ([`platform-contract.yaml`](../platform-contract.yaml) · drift check · payload check)
 - [ ] สร้าง Care Agent ให้ผู้ป่วยหลายคนบน platform เดียวกันได้
 
 ## Scenario tests ที่ต้องมี (ไม่ใช่ unit test)

@@ -218,7 +218,12 @@ async def test_delivery_failure_is_visible_not_silent(session, tenant, monkeypat
 
         events = await audit_events(session, tenant, patient.patient_id)
         failures = [e for e in events if e.event_type == "EXECUTION_FAILED"]
-        assert failures and "ส่งไม่ออก" in failures[-1].error
+        assert failures
+        error = failures[-1].error
+        assert error["code"] == "care.notification.delivery_failed"
+        assert error["category"] == "external_dependency"   # ปลายทางล่ม ไม่ใช่ input ผิด
+        assert error["retryable"] is True
+        assert "ส่งไม่ออก" in error["message"]
 
 
 async def test_unbound_patient_does_not_block_the_loop(session, tenant, outbox):

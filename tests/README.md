@@ -8,6 +8,7 @@ pytest tests/ -q                          # ทั้งหมด (sqlite — �
 pytest tests/test_scenario_care_loop.py -q
 python conformance/drift_check.py         # contract ยังตรงกับ agent-platform ที่ pin ไว้
 python conformance/migration_check.py     # migration ยังตรงกับ models
+python conformance/payload_check.py       # payload จริงที่ระบบผลิต conform agent-platform
 
 # แบบเดียวกับ CI และ production
 PSTACK_DATABASE_URL="postgresql+asyncpg://care:care@localhost:55432/care_test" pytest tests/ -q
