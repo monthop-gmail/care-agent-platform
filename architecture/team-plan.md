@@ -96,6 +96,21 @@ M6 ── Multi-organization (A+E)
 4. 🟡 ผูก `line_oa` ของ pstack เป็นช่องทางจริงของผู้ป่วย (ตอนนี้ notification ลง DB อย่างเดียว)
 5. 🟡 ตั้ง ARQ worker ให้เรียก `care_tick` เป็นระยะใน docker-compose (job เขียนไว้แล้วที่ `care_escalation/jobs.py`)
 
+## ของที่รอฝั่ง pstack
+
+สิ่งที่ kernel ยังไม่มีและเราแก้เองในรีโปนี้ไม่ได้ (ห้ามแก้โค้ด pstack ที่นี่ — [ADR-0002](../decisions/0002-runtime-on-pstack.md))
+ติดตามที่ issue ข้างล่าง **อย่าเปิดรอบใหม่ในนี้ ให้ไปคุยที่ต้นทาง**
+
+| upstream | เรื่อง | กระทบเราแค่ไหน |
+|---|---|---|
+| [pstack#2](https://github.com/willpower-institute/pstack/issues/2) | ลงทะเบียน periodic/cron job ไม่ได้ | 🔴 **ติดจริง** — `care_tick` เขียนไว้แล้วแต่ไม่มีอะไรมาปลุก ต้องพึ่ง cron นอกระบบไปก่อน |
+| [pstack#1](https://github.com/willpower-institute/pstack/issues/1) | loader ไม่สร้างตารางถ้าโมดูลถูก import ก่อน `create_app()` | 🟠 มี workaround ที่ `conftest._ensure_all_tables()` แต่ทำให้เทสไม่ได้ทดสอบเส้นทางติดตั้งจริง |
+| [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — `ap_tenancy` ใช้ได้อยู่ และเขียนให้ยกขึ้น kernel ได้ทีหลัง |
+| [pstack-app-template#1](https://github.com/willpower-institute/pstack-app-template/issues/1) | Dockerfile ของ template copy แค่ addons | ✅ แก้ฝั่งเราแล้ว (copy `policies/` + เทสกัน regression) |
+
+**กติกา:** เจอข้อจำกัดของ kernel ให้เปิด issue ที่ pstack แล้วเพิ่มแถวในตารางนี้
+พร้อมระบุว่าเราติดจริงหรือมี workaround — ทีมอื่นจะได้ไม่ไปชนของเดิมซ้ำ
+
 ## Contract-first — กติกาที่กันทีมชนกัน
 
 1. อยากได้ field ใหม่จาก addon ทีมอื่น → **แก้ `contracts/` ก่อน** แล้วค่อยเขียนโค้ด
