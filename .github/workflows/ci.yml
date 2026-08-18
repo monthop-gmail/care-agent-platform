@@ -8,6 +8,31 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # sqlite = เร็ว ใช้ระหว่างพัฒนา · postgres = ตรงกับ production ที่รันด้วย docker compose
+        db: [sqlite, postgres]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: care_test
+          POSTGRES_USER: care
+          POSTGRES_PASSWORD: care
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U care -d care_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PSTACK_DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgresql+asyncpg://care:care@localhost:5432/care_test' || 'sqlite+aiosqlite:///./test_care.db' }}
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,10 +52,15 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Lint
+        if: matrix.db == 'sqlite'
         run: ruff check care_addons/ tests/ conformance/ examples/
 
       - name: Contract conformance (agent-platform)
+        if: matrix.db == 'sqlite'
         run: python conformance/drift_check.py
+
+      - name: Migration ตรงกับ models
+        run: python conformance/migration_check.py
 
       - name: Test
         run: pytest tests/ -q

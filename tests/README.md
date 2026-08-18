@@ -4,10 +4,17 @@
 "ระบบทำสิ่งที่ถูกต้องกับผู้ป่วยจริงหรือเปล่า" ไม่ใช่ "ฟังก์ชันคืนค่าถูกไหม"
 
 ```bash
-pytest tests/ -q                      # ทั้งหมด (รันบน sqlite ไม่ต้องมี Postgres)
+pytest tests/ -q                          # ทั้งหมด (sqlite — ไม่ต้องมี Postgres)
 pytest tests/test_scenario_care_loop.py -q
-python conformance/drift_check.py     # contract ยังตรงกับ agent-platform ที่ pin ไว้
+python conformance/drift_check.py         # contract ยังตรงกับ agent-platform ที่ pin ไว้
+python conformance/migration_check.py     # migration ยังตรงกับ models
+
+# แบบเดียวกับ CI และ production
+PSTACK_DATABASE_URL="postgresql+asyncpg://care:care@localhost:55432/care_test" pytest tests/ -q
 ```
+
+CI รันชุดนี้ **สองรอบ** (matrix `sqlite` + `postgres`) — เทสที่ผ่านบน sqlite อย่างเดียว
+ไม่พอ เพราะข้อจำกัดจริงหลายอย่างโผล่เฉพาะบน Postgres
 
 ## ไฟล์
 
@@ -42,14 +49,13 @@ from tests.conftest import notifications, audit_events
 rows = await notifications(session, tenant, patient.patient_id, "caregiver")
 ```
 
-## ข้อควรรู้: pstack module loader กับตารางในเทส
+## engine ของเทสแยกจาก engine ของ kernel
 
-loader หาว่าโมดูลมีตารางอะไรจากการ diff `Base.metadata` **ตอน import โมดูล**
-แต่ไฟล์เทสถูก import ก่อน `create_app()` เสมอ พอถึงตอนโหลดจริง โมดูลอยู่ใน `sys.modules` แล้ว
-diff จึงได้ว่างและตารางไม่ถูกสร้าง — `conftest._ensure_all_tables()` จึงสร้างตารางที่ขาดให้
-
-ปัญหานี้ไม่เกิดใน production (ไม่มีใคร import addon ก่อน kernel) และจะหายไปเองเมื่อทุก addon
-มี Alembic migration ของตัวเอง — ดูงานที่ค้างใน [`../architecture/team-plan.md`](../architecture/team-plan.md)
+fixture `session` สร้าง engine ของตัวเองแทนการใช้ engine global — เพราะ `TestClient`
+รัน lifespan ในลูปของมันเอง และ engine ที่ถูกสร้างตรงนั้นผูกกับลูปนั้นถาวร
+พอเทส async ตัวถัดไป (คนละ event loop) หยิบไปใช้ asyncpg จะโยน
+`attached to a different loop` ทันที (aiosqlite ไม่โยนเพราะทำงานบน thread —
+บั๊กนี้จึงโผล่ตอนเปิด Postgres ใน CI เท่านั้น)
 
 ## เขียน scenario ใหม่
 

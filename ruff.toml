@@ -2,6 +2,10 @@
 line-length = 100
 target-version = "py311"
 
+# ไฟล์ที่ pstack generate ให้ (alembic env.py + revision) — ห้ามจัดรูปแบบเอง
+# เพราะจะถูก generate ทับใหม่ทุกครั้งที่สร้าง revision
+extend-exclude = ["care_addons/*/migrations/"]
+
 [lint]
 ignore = [
     "BLE001",  # except Exception — ตั้งใจใช้ในจุด resilience (drift check, timezone fallback)

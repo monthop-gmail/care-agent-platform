@@ -70,15 +70,30 @@ python3 -m venv .venv && .venv/bin/pip install -e "../pstack[dev]"
 
 export PSTACK_ADDONS_PATHS=../pstack/addons,care_addons
 .venv/bin/uvicorn main:app --reload
-.venv/bin/python -m pytest tests/ -q        # รันบน sqlite ไม่ต้องมี Postgres
-.venv/bin/python conformance/drift_check.py # ตรวจ contract ไม่ drift จาก agent-platform
+
+.venv/bin/python -m pytest tests/ -q             # เทสบน sqlite (ไม่ต้องมี Postgres)
+.venv/bin/python conformance/drift_check.py      # contract ยังตรงกับ agent-platform
+.venv/bin/python conformance/migration_check.py  # migration ยังตรงกับ models
 ```
 
-สร้าง migration ของโมดูล:
+เทสบน Postgres แบบเดียวกับ CI และ production:
+
+```bash
+docker run -d --name pg-test -e POSTGRES_USER=care -e POSTGRES_PASSWORD=care \
+  -e POSTGRES_DB=care_test -p 55432:5432 postgres:16-alpine
+
+PSTACK_DATABASE_URL="postgresql+asyncpg://care:care@localhost:55432/care_test" \
+  .venv/bin/python -m pytest tests/ -q
+```
+
+**แก้ `models.py` = ต้องมี migration เสมอ** (CI ตรวจให้ ไม่ผ่านแล้ว merge ไม่ได้):
 
 ```bash
 .venv/bin/python ../pstack/cli.py makemigration care_medication -m "add version chain"
 ```
+
+แต่ละโมดูลมี lineage และ version table ของตัวเอง (`alembic_version_<module>`) ไม่ชนกัน
+— ทีมที่แก้คนละโมดูลจึงสร้าง migration พร้อมกันได้โดยไม่ต้องรอกัน
 
 ## โครงสร้าง
 

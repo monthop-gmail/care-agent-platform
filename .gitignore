@@ -28,3 +28,6 @@ pstack_src/
 
 # local tooling
 .claude/settings.local.json
+
+# migration drift check
+migration_check.db

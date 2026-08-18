@@ -33,5 +33,7 @@ pstack ทำของที่เราต้องการเสร็จแ�
 ## ข้อจำกัดที่ต้องรักษา
 
 - **test ต้องรันบน sqlite ได้โดยไม่ต้องมี Postgres** — ห้ามใช้ฟีเจอร์เฉพาะ Postgres โดยไม่มี fallback
+  · แต่ CI รันทั้ง sqlite และ Postgres เสมอ (matrix) เพราะ sqlite อย่างเดียวไม่พอ
+- **แก้ `models.py` = ต้องมี Alembic migration** — `conformance/migration_check.py` บังคับใน CI
 - **`docker compose up` ต้องขึ้นได้เสมอบน main** — เป็น DoD ที่ `agent-platform` กำหนดให้ repo ลูก
 - addons path ของ repo นี้ชื่อ `care_addons` ห้ามชื่อ `addons` (ชนกับ pstack)

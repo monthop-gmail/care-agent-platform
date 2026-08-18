@@ -90,9 +90,9 @@ M6 ── Multi-organization (A+E)
 
 1. ✅ ~~ใส่ LICENSE (MIT) ที่ `willpower-institute/pstack`~~ — เสร็จ 2026-08-18,
    pin `PSTACK_REF=v0.1.1` ซึ่งเป็น tag แรกที่มีสัญญาอนุญาต
-2. 🟠 **Alembic migration ต่อ addon** — ตอนนี้ใช้ create-table fallback ของ loader
-   ซึ่งเปลี่ยน schema ทีหลังไม่ได้ (`python ../pstack/cli.py makemigration <module> -m "..."`)
-3. 🟠 **ทดสอบบน Postgres จริงใน CI** — ตอนนี้ CI รันบน sqlite เท่านั้น
+2. ✅ ~~Alembic migration ต่อ addon~~ — เสร็จ 2026-08-18, ทุกโมดูลที่มีตารางมี migration
+   ของตัวเองแล้ว และ `conformance/migration_check.py` บังคับใน CI ว่าแก้ models แล้วต้องมี revision
+3. ✅ ~~ทดสอบบน Postgres จริงใน CI~~ — เสร็จ 2026-08-18, CI เป็น matrix `sqlite` + `postgres`
 4. 🟡 ผูก `line_oa` ของ pstack เป็นช่องทางจริงของผู้ป่วย (ตอนนี้ notification ลง DB อย่างเดียว)
 5. 🟡 ตั้ง ARQ worker ให้เรียก `care_tick` เป็นระยะใน docker-compose (job เขียนไว้แล้วที่ `care_escalation/jobs.py`)
 

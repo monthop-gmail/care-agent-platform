@@ -31,6 +31,8 @@ MODULES = [
     "care_journal",
 ]
 
+# CI รันชุดเดียวกันสองรอบ: sqlite (เร็ว) และ Postgres (ตรงกับ production)
+# ตั้ง PSTACK_DATABASE_URL มาก่อนได้เพื่อชี้ไป Postgres
 os.environ.setdefault("PSTACK_DATABASE_URL", "sqlite+aiosqlite:///./test_care.db")
 os.environ.setdefault("PSTACK_SECRET_KEY", "test-secret")
 os.environ["PSTACK_MODULES"] = ",".join(MODULES)
@@ -38,24 +40,45 @@ os.environ["PSTACK_MODULES"] = ",".join(MODULES)
 import pytest
 import pytest_asyncio
 from core.app import create_app
-from core.db import dispose_engine, get_sessionmaker
 from fastapi.testclient import TestClient
 
 from care_addons.ap_tenancy import services as tenancy
 from care_addons.ap_tenancy.clock import set_now
 
 DB_FILE = ROOT / "test_care.db"
+DATABASE_URL = os.environ["PSTACK_DATABASE_URL"]
+ON_SQLITE = DATABASE_URL.startswith("sqlite")
+
+
+def _reset_database() -> None:
+    """เริ่มจาก DB ว่างเสมอ — ไม่งั้น alembic เห็นตารางเดิมแล้วข้ามการติดตั้ง"""
+    if ON_SQLITE:
+        DB_FILE.unlink(missing_ok=True)
+        return
+
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    async def _drop_schema() -> None:
+        engine = create_async_engine(DATABASE_URL)
+        async with engine.begin() as conn:
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
+        await engine.dispose()
+
+    asyncio.run(_drop_schema())
 
 
 @pytest.fixture(scope="session")
 def app():
-    if DB_FILE.exists():
-        DB_FILE.unlink()
+    _reset_database()
     application = create_app()
-    with TestClient(application) as client:      # lifespan สร้างตาราง + รัน hooks ของทุกโมดูล
+    with TestClient(application) as client:      # lifespan รัน migration + hooks ของทุกโมดูล
         yield application, client
-    if DB_FILE.exists():
-        DB_FILE.unlink()
+    if ON_SQLITE:
+        DB_FILE.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")
@@ -65,10 +88,19 @@ def client(app):
 
 @pytest_asyncio.fixture
 async def session(app):
-    """engine ใหม่ต่อเทส — แต่ละเทสมี event loop ของตัวเอง"""
-    async with get_sessionmaker()() as s:
+    """engine ของเทสเอง ไม่ใช่ engine global ของ kernel
+
+    เหตุผล: `TestClient` รัน lifespan ในลูปของตัวเอง และ engine global ที่ถูกสร้างตรงนั้น
+    จะผูกกับลูปนั้นถาวร พอเทส async ตัวถัดไป (คนละ event loop) หยิบไปใช้ asyncpg จะโยน
+    "attached to a different loop" ทันที — aiosqlite ไม่โยนเพราะทำงานบน thread
+    (เจอตอนเปิด Postgres ใน CI: sqlite ผ่านหมด Postgres พังหนึ่งตัวพอดี)
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(DATABASE_URL)
+    async with async_sessionmaker(engine, expire_on_commit=False)() as s:
         yield s
-    await dispose_engine()
+    await engine.dispose()
     set_now(None)
 
 
