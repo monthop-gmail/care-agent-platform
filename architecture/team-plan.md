@@ -106,7 +106,7 @@ M6 ── Multi-organization (A+E)
 | [pstack#2](https://github.com/willpower-institute/pstack/issues/2) | ลงทะเบียน periodic/cron job ไม่ได้ | ✅ **แก้แล้วใน pstack v0.2.0** — `care_tick` เป็น `@periodic_job` แล้ว worker เดินลูปเองทุกนาที |
 | [pstack#1](https://github.com/willpower-institute/pstack/issues/1) | loader ไม่สร้างตารางถ้าโมดูลถูก import ก่อน `create_app()` | ✅ **แก้แล้วใน pstack v0.2.0** — ถอด workaround `_ensure_all_tables()` ออกจาก conftest แล้ว |
 | [pstack#4](https://github.com/willpower-institute/pstack/issues/4) | worker service ใน compose พังเพราะ `arq` เป็น console script | 🟠 เลี่ยงแล้วด้วย `python -m arq` ใน compose ของเรา รอ fix ต้นทาง |
-| [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — รอ platform owner เคาะ 5 ข้อ แล้วจึงยก `ap_tenancy` ขึ้น kernel |
+| [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — เคาะแล้ว: RLS + คง `scoped()` · consent คงไว้ที่ repo นี้ ([ADR-0007](../decisions/0007-consent-and-data-access.md)) · kernel จะชื่อ `tenancy` (ตัด `ap_`) เมื่อยกขึ้นแล้วเราลบ `ap_tenancy` |
 | [pstack-app-template#1](https://github.com/willpower-institute/pstack-app-template/issues/1) | Dockerfile ของ template copy แค่ addons | ✅ แก้ทั้งสองฝั่งแล้ว |
 
 **กติกา:** เจอข้อจำกัดของ kernel ให้เปิด issue ที่ pstack แล้วเพิ่มแถวในตารางนี้
