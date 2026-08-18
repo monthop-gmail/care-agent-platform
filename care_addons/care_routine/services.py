@@ -65,7 +65,7 @@ async def add_routine(
         session,
         scope,
         event_type="STATE_TRANSITION",
-        subject_type="artifact",
+        subject_type="record",
         subject_id=item.routine_id,
         transition={"from": None, "to": "enabled", "reason": "routine created"},
         attributes={

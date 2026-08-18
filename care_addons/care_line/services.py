@@ -30,8 +30,15 @@ class PairingError(ValueError):
     pass
 
 
-async def _line_transport(channel_id: str, line_user_id: str, text: str) -> tuple[bool, str | None]:
-    """ส่งจริงผ่าน LINE Messaging API ของ pstack"""
+async def _line_transport(
+    channel_id: str, line_user_id: str, text: str, reply_token: str | None = None
+) -> tuple[bool, str | None]:
+    """ส่งจริงผ่าน LINE Messaging API ของ pstack
+
+    ใช้ `client.respond()` ซึ่งลอง reply ก่อน (ไม่นับโควตาข้อความ) แล้ว fallback เป็น push
+    ให้อัตโนมัติ — การตอบผู้ป่วยเกิดภายในไม่กี่ร้อย ms หลังเขาพิมพ์ จึงเป็น reply เกือบทุกครั้ง
+    (ต้องการ pstack >= v0.2.2 · willpower-institute/pstack#6)
+    """
     from addons.line_oa import client as line_client
     from addons.line_oa.models import LineChannel
     from core.db import get_sessionmaker
@@ -43,7 +50,9 @@ async def _line_transport(channel_id: str, line_user_id: str, text: str) -> tupl
             return False, f"ไม่พบ LINE channel {channel_id} ในระบบ"
         token = channel.access_token
 
-    ok = await line_client.push(token, line_user_id, [line_client.text_message(text)])
+    ok = await line_client.respond(
+        token, reply_token, line_user_id, [line_client.text_message(text)]
+    )
     return ok, None if ok else "LINE API ปฏิเสธข้อความ"
 
 
@@ -81,7 +90,7 @@ async def create_pairing_code(
         session,
         scope,
         event_type="STATE_TRANSITION",
-        subject_type="artifact",
+        subject_type="record",
         subject_id=patient_id,
         transition={"from": None, "to": "pairing_code_issued", "reason": role},
         attributes={
@@ -147,7 +156,7 @@ async def redeem_pairing_code(
         session,
         scope,
         event_type="STATE_TRANSITION",
-        subject_type="artifact",
+        subject_type="record",
         subject_id=binding.patient_id,
         transition={"from": None, "to": "line_bound", "reason": binding.role},
         attributes={
@@ -190,9 +199,17 @@ async def binding_for_principal(
 
 
 async def send_text(
-    session: AsyncSession, scope: TenantScope, principal_id: str, text: str
+    session: AsyncSession,
+    scope: TenantScope,
+    principal_id: str,
+    text: str,
+    *,
+    reply_token: str | None = None,
 ) -> tuple[bool, str | None]:
+    """ส่งข้อความหา principal — reminder ที่ระบบเริ่มเองไม่มี reply_token จึงเป็น push"""
     binding = await binding_for_principal(session, scope, principal_id)
     if binding is None:
         return False, f"{principal_id} ยังไม่ได้ผูกบัญชี LINE"
-    return await transport(binding.channel_id, binding.line_user_id, text)
+    return await transport(
+        binding.channel_id, binding.line_user_id, text, reply_token=reply_token
+    )

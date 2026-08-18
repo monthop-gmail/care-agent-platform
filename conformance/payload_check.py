@@ -50,6 +50,7 @@ SCHEMA_FILES = [
     "capability/v1/capability.schema.yaml",
     "error/v1/error.schema.yaml",
     "model/v1/inference.schema.yaml",
+    "consent/v1/consent.schema.yaml",
 ]
 
 # attribute ของโดเมนที่ care-event.schema.yaml บังคับให้อยู่ระดับบนสุด
@@ -103,8 +104,11 @@ def care_event_schema(schemas: dict[str, dict]) -> dict:
     return document
 
 
-async def run_scenario() -> tuple[list, list]:
-    """เดินสถานการณ์จริงหนึ่งวันของผู้ป่วยหนึ่งคน แล้วคืน (audit events, policy decisions)"""
+async def run_scenario() -> tuple[list, list, list]:
+    """เดินสถานการณ์จริงหนึ่งวันของผู้ป่วยหนึ่งคน
+
+    คืน (audit events, policy decisions, consent grants)
+    """
     from core.app import create_app  # core.app เรียก logging.basicConfig ตอน import
     from core.db import dispose_engine, get_engine, get_sessionmaker
     from core.registry import create_core_tables, sync_modules
@@ -115,6 +119,7 @@ async def run_scenario() -> tuple[list, list]:
     from care_addons.ap_policy.engine import evaluate
     from care_addons.ap_tenancy import services as tenancy
     from care_addons.ap_tenancy.clock import FakeClock
+    from care_addons.ap_tenancy.models import ApConsentGrant
     from care_addons.care_appointment import services as appointments
     from care_addons.care_escalation import services as jobs
     from care_addons.care_journal import services as journal
@@ -172,7 +177,21 @@ async def run_scenario() -> tuple[list, list]:
                     grantee=tenancy.Principal(type=kind, id=grantee),
                     scopes=["care.manage"],
                     granted_by=tenancy.Principal(type="human", id="user-1"),
+                    authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
                 )
+            # ใบที่ถูกเพิกถอน — ให้ payload ที่มี revoked_* ครบเข้าไป validate ด้วย
+            revoked = await tenancy.grant_consent(
+                session, admin,
+                subject_id=patient.patient_id,
+                grantee=tenancy.Principal(type="human", id="user-9"),
+                scopes=["routine.read"],
+                purpose="family_awareness",
+                granted_by=tenancy.Principal(type="human", id="user-1"),
+                authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
+            )
+            await tenancy.revoke_consent(
+                session, admin, revoked.grant_id, reason="ญาติย้ายออกจากทีมดูแลแล้ว"
+            )
             caregiver = await patients.add_caregiver(
                 session, admin, principal_id="user-2", display_name="ลูกสาว", relation="daughter"
             )
@@ -246,6 +265,9 @@ async def run_scenario() -> tuple[list, list]:
                 await session.execute(select(ApAuditEvent).order_by(ApAuditEvent.occurred_at))
             ).scalars()
             events = list(rows)
+            grants = list(
+                (await session.execute(select(ApConsentGrant))).scalars()
+            )
 
     decisions = [
         evaluate(capability)
@@ -257,7 +279,7 @@ async def run_scenario() -> tuple[list, list]:
     await dispose_engine()
     if url.startswith("sqlite"):
         CHECK_DB.unlink(missing_ok=True)
-    return events, decisions
+    return events, decisions, grants
 
 
 def main() -> int:
@@ -268,8 +290,9 @@ def main() -> int:
     schemas = fetch_schemas(pinned, offline=offline)
 
     from care_addons.ap_audit.services import as_platform_event
+    from care_addons.ap_tenancy.services import as_consent_grant
 
-    events, decisions = asyncio.run(run_scenario())
+    events, decisions, grants = asyncio.run(run_scenario())
     if not events:
         print("✗ scenario ไม่ได้ผลิต event เลย — เช็คว่า scenario ยังทำงานอยู่")
         return 1
@@ -305,6 +328,16 @@ def main() -> int:
                     f"{error.json_path} — {error.message}"
                 )
 
+    consent_validator = build_validator(
+        schemas, schemas[f"{PLATFORM_HOST}consent/v1/consent.schema.yaml"]
+    )
+    for grant in grants:
+        payload = as_consent_grant(grant)
+        for error in consent_validator.iter_errors(payload):
+            failures.append(
+                f"consent/v1 · {grant.grant_id}: {error.json_path} — {error.message}"
+            )
+
     for decision in decisions:
         payload = {
             **decision.as_policy_result(),
@@ -322,8 +355,8 @@ def main() -> int:
         return 1
 
     print(
-        f"✓ payload conformance ผ่าน — {len(events)} audit event "
-        f"(care event {care_count}) + {len(decisions)} policy decision "
+        f"✓ payload conformance ผ่าน — {len(events)} audit event (care event {care_count}) "
+        f"+ {len(grants)} consent grant + {len(decisions)} policy decision "
         f"validate กับ agent-platform @ {pinned['commit'][:8]}"
     )
     return 0

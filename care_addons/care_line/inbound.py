@@ -239,6 +239,8 @@ async def on_line_message(payload: dict) -> None:
     channel_id = payload.get("channel", "")
     line_user_id = payload.get("line_user_id", "")
     text = (payload.get("text") or "").strip()
+    # pstack >= v0.2.2 ส่ง reply_token มาด้วย — ตอบด้วย reply ที่ไม่นับโควตาแทน push
+    reply_token = payload.get("reply_token")
     if not channel_id or not line_user_id or not text:
         return
 
@@ -255,6 +257,7 @@ async def on_line_message(payload: dict) -> None:
                     line_user_id,
                     "สวัสดีครับ 🙏 บัญชีนี้ยังไม่ได้เชื่อมกับข้อมูลผู้ป่วย\n"
                     "ขอรหัสจับคู่จากผู้ดูแล แล้วพิมพ์ว่า “ผูก <รหัส>” ได้เลยครับ",
+                    reply_token=reply_token,
                 )
                 return
             try:
@@ -266,12 +269,18 @@ async def on_line_message(payload: dict) -> None:
                 )
                 await session.commit()
             except line.PairingError as e:
-                await line.transport(channel_id, line_user_id, f"{e} — ขอรหัสใหม่จากผู้ดูแลได้ครับ")
+                await line.transport(
+                    channel_id,
+                    line_user_id,
+                    f"{e} — ขอรหัสใหม่จากผู้ดูแลได้ครับ",
+                    reply_token=reply_token,
+                )
                 return
             await line.transport(
                 channel_id,
                 line_user_id,
                 "เชื่อมบัญชีเรียบร้อยแล้วครับ ✅\nต่อไปผมจะคอยเตือนและตอบคำถามให้นะครับ",
+                reply_token=reply_token,
             )
             return
 
@@ -283,4 +292,4 @@ async def on_line_message(payload: dict) -> None:
             await session.rollback()
             reply = "ขออภัยครับ ระบบขัดข้องชั่วคราว ผมแจ้งผู้ดูแลให้แล้วนะครับ"
 
-    await line.transport(channel_id, line_user_id, reply)
+    await line.transport(channel_id, line_user_id, reply, reply_token=reply_token)

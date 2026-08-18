@@ -13,6 +13,7 @@ contracts:
   - policy/v1       # action_risk × authority_map → authority (ap_policy)
   - capability/v1   # ActionRisk — ผูกกับ capability ไม่ใช่กับ request
   - error/v1        # error ใน audit event เป็น object ตาม taxonomy นี้ ไม่ใช่ข้อความอิสระ
+  - consent/v1      # ความยินยอมเข้าถึงข้อมูลของบุคคล (ap_tenancy) — เสนอโดย repo นี้เอง (ADR-0012)
 
 # contract ที่ยังไม่ได้ใช้ — จะเพิ่มเมื่อ implement จริง ไม่ประกาศล่วงหน้า
 not_yet:
@@ -22,7 +23,7 @@ not_yet:
 
 conformance:
   status: passing
-  last_verified: "2026-08-18"
+  last_verified: "2026-08-19"
 
   # ครบ 3 ข้อของ ADR-0006:
   #   1. manifest            — ไฟล์นี้
@@ -39,7 +40,9 @@ conformance:
       scope: contract ของ repo นี้ยัง $ref ตรงกับ agent-platform ที่ pin ไว้
     - name: payload_check
       command: python conformance/payload_check.py
-      scope: payload จริงที่ระบบผลิต validate ผ่าน event/v1 · policy/v1 · error/v1
+      scope: >-
+        payload จริงที่ระบบผลิต validate ผ่าน event/v1 · policy/v1 · error/v1 · consent/v1
+        (audit event + consent grant ทั้งใบที่ยังใช้ได้และใบที่ถูกเพิกถอน)
 
 # ส่วนขยายที่ repo นี้นิยามเองในโดเมนของตัวเอง — ไม่ได้ขอให้ platform รับไปดูแล
 extensions:
@@ -50,19 +53,19 @@ extensions:
       เพิ่ม care_event_type (additive ตาม RFC-0009) · patient_id · severity · evidence
       โดยไม่ลดทอน guarantee ใดของ event/v1 · payload_check validate ทั้งสองชั้น
 
-# ช่องว่างที่เจอจากการ implement จริง — เปิด issue ที่ agent-platform แล้ว
-gaps:
+# ช่องว่างที่เจอจากการ implement จริง
+gaps: []
+
+resolved_gaps:
   - id: subject-type-for-domain-records
-    detail: >-
-      SubjectType เป็นชุดปิดที่ไม่มีค่าสำหรับบันทึกของโดเมน (ผู้ป่วย · ใบสั่งยา · journal)
-      ตอนนี้ map เป็น artifact ซึ่งความหมายเพี้ยน
-    severity: medium
+    detail: SubjectType ไม่มีค่าสำหรับบันทึกของโดเมน — เคย map เป็น artifact ซึ่งความหมายเพี้ยน
     tracked_by: https://github.com/monthop-gmail/agent-platform/issues/14
-    workaround: subject_type = artifact + metadata.record_type
+    resolved_by: event/v1 เพิ่มค่า `record` (8f7dd13) — repo นี้ย้ายมาใช้แล้ว
   - id: no-consent-contract
     detail: >-
-      ไม่มี contract สำหรับความยินยอมในการเข้าถึงข้อมูลของบุคคล
-      ซึ่ง RBAC ตอบแทนไม่ได้ (ทำ action ได้ ≠ ทำกับข้อมูลของคนนี้ได้)
-    severity: medium
+      ไม่มี contract สำหรับความยินยอมเข้าถึงข้อมูลของบุคคล ซึ่ง RBAC ตอบแทนไม่ได้
+      (ทำ action ได้ ≠ ทำกับข้อมูลของคนนี้ได้)
     tracked_by: https://github.com/monthop-gmail/agent-platform/issues/15
-    workaround: implement เองที่ ap_tenancy โดยเก็บให้ domain-free เพื่อยกขึ้นได้ทีหลัง
+    resolved_by: >-
+      ADR-0012 + contracts/consent/v1 (5977dd9) — repo นี้ปรับ implementation ตามครบ
+      รวมถึงลบ field `status` ที่ contract ห้ามไว้

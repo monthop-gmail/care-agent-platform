@@ -92,7 +92,7 @@ curl -X POST localhost:8000/api/care/line/pairing-codes \
 ต้องมี pstack checkout ไว้ข้าง ๆ (tag เดียวกับ `PSTACK_REF`)
 
 ```bash
-git clone --branch v0.2.0 https://github.com/willpower-institute/pstack.git ../pstack
+git clone --branch v0.2.2 https://github.com/willpower-institute/pstack.git ../pstack
 python3 -m venv .venv && .venv/bin/pip install -e "../pstack[dev]"
 
 export PSTACK_ADDONS_PATHS=../pstack/addons,care_addons

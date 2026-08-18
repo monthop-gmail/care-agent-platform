@@ -68,10 +68,25 @@ consent ข้าม tenant ไม่ได้ ไม่ว่ากรณีใ
 - รองรับ PDPA ได้ตั้งแต่ต้น: ตอบได้ว่าใครเข้าถึงข้อมูลอะไรเมื่อไร และลบ/ถอนได้จริง
 - เพิ่มงานให้ทุกทีมเล็กน้อยในทุก endpoint — ยอมรับ เพราะย้อนกลับมาใส่ทีหลังแพงกว่ามาก
 
+## อัปเดต 2026-08-19 — `consent/v1` เป็น contract ของ platform แล้ว
+
+[agent-platform#15](https://github.com/monthop-gmail/agent-platform/issues/15) ถูกรับเข้าเป็น
+[ADR-0012](https://github.com/monthop-gmail/agent-platform/blob/main/decisions/0012-consent-contract.md)
+และ publish เป็น `contracts/consent/v1` แล้ว — implementation ของเราปรับตามครบ:
+
+| สิ่งที่ contract บังคับ | ที่เราแก้ |
+|---|---|
+| **ห้ามมี field `status`** — สถานะต้องคำนวณจาก `revoked_at`/`expires_at` ไม่ใช่เก็บซ้ำ | ลบคอลัมน์ `active` ออก (มันคือ field เก็บสถานะซ้ำที่ contract เตือนไว้ตรง ๆ ว่าจะ drift) |
+| การเพิกถอนต้องมี `revoked_by` + `revoked_reason` | `revoke_consent()` บังคับเหตุผท และบันทึกว่าใครถอน |
+| `authority_basis` เมื่อผู้ให้ไม่ใช่เจ้าของข้อมูล | **เราบังคับ** (contract ให้เป็น optional) เพราะโดเมนนี้การให้แทนคือกรณีปกติ |
+
+`contracts/consent/v1/` ของเราเหลือเฉพาะ vocabulary ของ scope ซึ่ง platform ระบุว่าเป็นของโดเมน
+
 ## หมายเหตุ — เคยพิจารณายก consent ขึ้น kernel แล้ว (2026-08-18)
 
 ทีม pstack เสนอให้ย้าย `ApConsentGrant` ขึ้นเป็นโมดูลของ kernel พร้อม tenancy
-([pstack#3](https://github.com/willpower-institute/pstack/issues/3)) — **ตัดสินใจว่ายังไม่ยก**
+([pstack#3](https://github.com/willpower-institute/pstack/issues/3)) — **ตัดสินใจว่าไม่ยกขึ้น kernel**
+แล้วส่งไป agent-platform แทน ซึ่งรับเข้าเป็น contract จริงตามที่เห็นด้านบน
 
 1. ADR-0001 กำหนดไว้ว่า domain ที่ยังไม่มีที่อยู่ใน platform ให้ทำที่ repo นี้ก่อน
    แล้วเสนอขึ้นเมื่อมี consumer ตัวที่สองต้องใช้จริง — ตอนนี้มีเราคนเดียว

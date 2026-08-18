@@ -5,8 +5,8 @@
 
 repo: monthop-gmail/agent-platform
 ref: main
-commit: c1a4f4041341502a8b4c0becb96f43813de4cf20
-pinned_at: "2026-08-18"
+commit: 5977dd98503b02b7f387a7d2698f6e227f8bb712
+pinned_at: "2026-08-19"
 
 # $ref ที่ contract ของเราอ้างไปที่ agent-platform ได้ — ทุกตัวต้องมีจริงที่ commit ข้างบน
 # เพิ่มรายการใหม่ = ต้องรัน drift_check แบบ --online ให้ผ่านก่อน commit
@@ -24,6 +24,7 @@ allowed_refs:
   event/v1/event.schema.yaml:
     - ""            # อ้างทั้งไฟล์ (envelope)
     - $defs/EventType
+    - $defs/EventTypeName
     - $defs/SubjectType
   policy/v1/policy-decision.schema.yaml:
     - $defs/Effect
@@ -35,6 +36,11 @@ allowed_refs:
     - $defs/Decision
   error/v1/error.schema.yaml:
     - ""
+    - $defs/Category
+  consent/v1/consent.schema.yaml:
+    - ""
+    - $defs/Scope
+    - $defs/Purpose
 
 # guarantee ของ platform ที่ implementation ของเราลดทอนไม่ได้ (event/v1 · ADR-0004)
 # drift_check ไม่ตรวจข้อเหล่านี้ — scenario test เป็นคนตรวจ

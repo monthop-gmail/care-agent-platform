@@ -168,6 +168,7 @@ async def setup_patient(
         grantee=tenancy.Principal(type="human", id="user-1"),
         scopes=["care.manage"],
         granted_by=tenancy.Principal(type="human", id="user-1"),
+            authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
     )
     await tenancy.grant_consent(
         session,
@@ -176,6 +177,7 @@ async def setup_patient(
         grantee=tenancy.Principal(type="service", id="care-orchestrator"),
         scopes=["care.manage"],
         granted_by=tenancy.Principal(type="human", id="user-1"),
+            authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
     )
     caregiver = None
     if with_caregiver:
@@ -197,6 +199,7 @@ async def setup_patient(
             grantee=tenancy.Principal(type="human", id="user-2"),
             scopes=["routine.read", "medication.read"],
             granted_by=tenancy.Principal(type="human", id="user-1"),
+            authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
         )
     await session.commit()
     return patient, caregiver

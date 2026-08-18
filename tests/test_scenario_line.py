@@ -30,8 +30,17 @@ def outbox(monkeypatch):
     """ดักข้อความที่จะถูกส่งออก LINE"""
     sent: list[dict] = []
 
-    async def fake_transport(channel_id: str, line_user_id: str, text: str):
-        sent.append({"channel_id": channel_id, "line_user_id": line_user_id, "text": text})
+    async def fake_transport(
+        channel_id: str, line_user_id: str, text: str, reply_token: str | None = None
+    ):
+        sent.append(
+            {
+                "channel_id": channel_id,
+                "line_user_id": line_user_id,
+                "text": text,
+                "reply_token": reply_token,
+            }
+        )
         return True, None
 
     monkeypatch.setattr(line, "transport", fake_transport)
@@ -188,11 +197,13 @@ async def test_reminder_is_actually_delivered_to_line(session, tenant, outbox):
         rows = await notifications(session, tenant, patient.patient_id, "patient")
         assert rows[0].delivery_status == "sent"
         assert rows[0].delivery_error is None
+        # reminder ที่ระบบเริ่มเองไม่มี reply_token → เป็น push ตามที่ควรเป็น
+        assert outbox[0]["reply_token"] is None
 
 
 async def test_delivery_failure_is_visible_not_silent(session, tenant, monkeypatch):
     """ส่งไม่ออกต้องเห็นได้ — ไม่ใช่บันทึกว่าส่งแล้วทั้งที่ผู้ป่วยไม่เคยได้รับ"""
-    async def broken_transport(channel_id, line_user_id, text):
+    async def broken_transport(channel_id, line_user_id, text, reply_token=None):
         return False, "LINE API ล่ม"
 
     monkeypatch.setattr(line, "transport", broken_transport)
@@ -315,6 +326,41 @@ async def test_s7_over_line_no_evidence_means_no_data(session, tenant, outbox):
         assert "ยังไม่มีข้อมูล" in reply
         for word in ["น่าจะ", "คิดว่า", "ปกติแล้ว", "คงจะ"]:
             assert word not in reply
+
+
+async def test_reply_token_is_used_when_answering_the_patient(session, tenant, outbox, monkeypatch):
+    """ตอบผู้ป่วยต้องใช้ reply (ไม่นับโควตา LINE) ไม่ใช่ push — ต้องการ pstack >= v0.2.2
+
+    reminder ที่ระบบเริ่มเองยังเป็น push เพราะไม่มี reply_token ซึ่งถูกต้อง
+    """
+    with FakeClock("2026-08-19T01:00:00+00:00"):
+        patient, _ = await _patient_with_morning_medication(session, tenant)
+        await _bind(
+            session, tenant, patient, line_user_id=PATIENT_LINE_ID,
+            principal_id=patient.patient_id, role="patient",
+        )
+        await _reminded_job(session, tenant, patient)
+        outbox.clear()
+
+        # on_line_message เปิด session ของ kernel เอง (ถูกต้องสำหรับ production ที่ handler
+        # รันในลูปของแอป) — ในเทสต้อง dispose engine global ก่อน ไม่งั้น asyncpg เจอ
+        # engine ที่ถูกสร้างในลูปของ TestClient แล้วโยน "attached to a different loop"
+        from core.db import dispose_engine
+
+        await dispose_engine()
+        await inbound.on_line_message(
+            {
+                "channel": CHANNEL,
+                "line_user_id": PATIENT_LINE_ID,
+                "text": "ทานแล้วครับ",
+                "reply_token": "reply-token-abc",
+            }
+        )
+
+        await dispose_engine()
+
+        assert outbox, "ต้องมีการตอบกลับ"
+        assert outbox[-1]["reply_token"] == "reply-token-abc"
 
 
 async def test_orientation_over_line(session, tenant, outbox):

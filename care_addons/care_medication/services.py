@@ -107,7 +107,7 @@ async def propose_version(
         session,
         scope,
         event_type="STATE_TRANSITION",
-        subject_type="artifact",
+        subject_type="record",
         subject_id=version.version_id,
         care_event_type="care.medication.changed",
         severity="low",   # แค่ข้อเสนอ ยังไม่มีผลกับสิ่งที่ผู้ป่วยต้องทำ
@@ -170,7 +170,7 @@ async def confirm_version(
         session,
         scope,
         event_type="STATE_TRANSITION",
-        subject_type="artifact",
+        subject_type="record",
         subject_id=version.version_id,
         care_event_type="care.medication.changed",
         severity="medium",   # ตารางยาของผู้ป่วยเปลี่ยนจริงตั้งแต่วินาทีนี้
@@ -234,7 +234,7 @@ async def stop_medication(
         session,
         scope,
         event_type="STATE_TRANSITION",
-        subject_type="artifact",
+        subject_type="record",
         subject_id=version.version_id,
         care_event_type="care.medication.changed",
         severity="high",   # หยุดยาเป็นการเปลี่ยนแปลงที่ผู้ดูแลต้องรู้เสมอ
@@ -321,7 +321,7 @@ async def detect_conflicts(session: AsyncSession, scope: TenantScope, patient_id
             session,
             scope,
             event_type="GOVERNANCE_DECISION",
-            subject_type="artifact",
+            subject_type="record",
             subject_id=group[0].version_id,
             care_event_type="care.medication.conflict",
             severity="high",

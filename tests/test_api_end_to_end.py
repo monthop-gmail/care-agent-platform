@@ -39,6 +39,19 @@ def care(client, token):
     patient_id = patient.json()["patient_id"]
 
     me = client.get("/api/users/me", headers=auth).json()
+    # ให้ความยินยอมแทนผู้ป่วยได้ แต่ต้องบอกว่าให้แทนโดยอำนาจอะไร (consent/v1)
+    without_basis = client.post(
+        "/api/platform/consents",
+        headers=headers,
+        json={
+            "subject_id": patient_id,
+            "grantee_id": f"user-{me['id']}",
+            "scopes": ["care.manage"],
+        },
+    )
+    assert without_basis.status_code == 422
+    assert "authority_basis" in without_basis.json()["detail"]
+
     grant = client.post(
         "/api/platform/consents",
         headers=headers,
@@ -46,6 +59,7 @@ def care(client, token):
             "subject_id": patient_id,
             "grantee_id": f"user-{me['id']}",
             "scopes": ["care.manage"],
+            "authority_basis": "ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
         },
     )
     assert grant.status_code == 201, grant.text

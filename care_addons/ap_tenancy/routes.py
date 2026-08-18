@@ -32,7 +32,13 @@ class ConsentIn(BaseModel):
     grantee_type: str = "human"
     scopes: list[str] = Field(min_length=1)
     purpose: str = "daily_care"
+    # บังคับเมื่อผู้ให้ความยินยอมไม่ใช่เจ้าของข้อมูลเอง (consent/v1)
+    authority_basis: str | None = None
     expires_at: datetime | None = None
+
+
+class RevokeIn(BaseModel):
+    reason: str = Field(min_length=1)
 
 
 @router.post("/tenants", status_code=201)
@@ -85,7 +91,8 @@ async def grant_consent(
     session: SessionDep,
     user: Annotated[Any, Depends(require_permission("platform.consent.manage"))],
 ) -> dict:
-    grant = await svc.grant_consent(
+    try:
+        grant = await svc.grant_consent(
         session,
         scope,
         subject_id=body.subject_id,
@@ -93,8 +100,11 @@ async def grant_consent(
         scopes=body.scopes,
         purpose=body.purpose,
         granted_by=principal_of(user),
+        authority_basis=body.authority_basis,
         expires_at=body.expires_at,
     )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     await session.commit()
     return {"grant_id": grant.grant_id, "scopes": grant.scopes, "subject_id": grant.subject_id}
 
@@ -112,7 +122,10 @@ async def list_consents(scope: ScopeDep, session: SessionDep, subject_id: str | 
             "grantee_id": g.grantee_id,
             "scopes": g.scopes,
             "purpose": g.purpose,
-            "active": g.active and g.revoked_at is None,
+            # สถานะคำนวณจาก revoked_at/expires_at เท่านั้น — ไม่มีคอลัมน์เก็บซ้ำ (consent/v1)
+            "revoked_at": g.revoked_at,
+            "revoked_reason": g.revoked_reason,
+            "authority_basis": g.authority_basis,
             "expires_at": g.expires_at,
         }
         for g in result.scalars()
@@ -122,12 +135,16 @@ async def list_consents(scope: ScopeDep, session: SessionDep, subject_id: str | 
 @router.delete("/consents/{grant_id}", status_code=204)
 async def revoke_consent(
     grant_id: str,
+    body: RevokeIn,
     scope: ScopeDep,
     session: SessionDep,
     _: Annotated[Any, Depends(require_permission("platform.consent.manage"))],
 ) -> None:
+    """เพิกถอน — ต้องระบุเหตุผลเสมอ (consent/v1 dependentRequired)"""
     try:
-        await svc.revoke_consent(session, scope, grant_id)
+        await svc.revoke_consent(session, scope, grant_id, reason=body.reason)
     except svc.ConsentDenied as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     await session.commit()

@@ -27,7 +27,12 @@ PLATFORM_EVENT_TYPES = {
     "JOB_COMPLETED",
 }
 
-SUBJECT_TYPES = {"job", "execution", "step", "agent", "tool_call", "artifact", "approval", "external"}
+SUBJECT_TYPES = {
+    "job", "execution", "step", "agent", "tool_call", "artifact", "approval", "external",
+    # `record` = บันทึกของโดเมนที่ต้องตามรอยได้แต่ไม่ได้เกิดจาก job
+    # (agent-platform#14 — เพิ่มเข้า event/v1 หลังเราเจอปัญหาจากการใช้งานจริง)
+    "record",
+}
 
 FORBIDDEN_ATTRIBUTE_KEYS = {"reasoning", "chain_of_thought", "thinking", "scratchpad"}
 

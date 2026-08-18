@@ -112,7 +112,10 @@ M6 ── Multi-organization (A+E)
 |---|---|---|
 | [pstack#2](https://github.com/willpower-institute/pstack/issues/2) | ลงทะเบียน periodic/cron job ไม่ได้ | ✅ **แก้แล้วใน pstack v0.2.0** — `care_tick` เป็น `@periodic_job` แล้ว worker เดินลูปเองทุกนาที |
 | [pstack#1](https://github.com/willpower-institute/pstack/issues/1) | loader ไม่สร้างตารางถ้าโมดูลถูก import ก่อน `create_app()` | ✅ **แก้แล้วใน pstack v0.2.0** — ถอด workaround `_ensure_all_tables()` ออกจาก conftest แล้ว |
-| [pstack#4](https://github.com/willpower-institute/pstack/issues/4) | worker service ใน compose พังเพราะ `arq` เป็น console script | 🟠 เลี่ยงแล้วด้วย `python -m arq` ใน compose ของเรา รอ fix ต้นทาง |
+| [pstack#4](https://github.com/willpower-institute/pstack/issues/4) | worker service ใน compose พังเพราะ `arq` เป็น console script | ✅ **แก้แล้วใน pstack v0.2.1** ทั้ง kernel และ template |
+| [pstack#6](https://github.com/willpower-institute/pstack/issues/6) | `line.message.received` ไม่มี `reply_token` | ✅ **v0.2.2** — event พก `reply_token` + มี `client.respond()` (reply ก่อน แล้ว fallback push) · `care_line` ใช้แล้ว ตอบผู้ป่วยไม่กิน push quota |
+| [pstack#7](https://github.com/willpower-institute/pstack/issues/7) | `makemigration` ออก revision เปล่าเงียบ ๆ | ✅ **v0.2.1** — ปฏิเสธ + ลบไฟล์เปล่าให้ + บอกวิธีแก้ |
+| [pstack#8](https://github.com/willpower-institute/pstack/issues/8) | DX: engine ผูก event loop + accessor ของ periodic job | ✅ **v0.2.1** — `core.testing.isolated_session` + `core.jobs.periodic_jobs()` (เทสเราใช้ public accessor แล้ว) |
 | [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — เคาะแล้ว: RLS + คง `scoped()` · consent คงไว้ที่ repo นี้ ([ADR-0007](../decisions/0007-consent-and-data-access.md)) · kernel จะชื่อ `tenancy` (ตัด `ap_`) เมื่อยกขึ้นแล้วเราลบ `ap_tenancy` |
 | [pstack-app-template#1](https://github.com/willpower-institute/pstack-app-template/issues/1) | Dockerfile ของ template copy แค่ addons | ✅ แก้ทั้งสองฝั่งแล้ว |
 
@@ -123,11 +126,12 @@ M6 ── Multi-organization (A+E)
 
 | upstream | เรื่อง | สถานะ |
 |---|---|---|
-| [agent-platform#14](https://github.com/monthop-gmail/agent-platform/issues/14) | `SubjectType` ไม่มีค่าสำหรับบันทึกของโดเมน | 🟡 ใช้ `artifact` + `metadata.record_type` ไปก่อน ([ADR-0004](../decisions/0004-care-event-vocabulary.md)) |
-| [agent-platform#15](https://github.com/monthop-gmail/agent-platform/issues/15) | ยังไม่มี `consent/v1` | 🟡 implement เองที่ `ap_tenancy` โดยเก็บให้ domain-free ([ADR-0007](../decisions/0007-consent-and-data-access.md)) |
+| [agent-platform#14](https://github.com/monthop-gmail/agent-platform/issues/14) | `SubjectType` ไม่มีค่าสำหรับบันทึกของโดเมน | ✅ platform เพิ่มค่า `record` ให้แล้ว — เราย้ายจาก `artifact` มาใช้ ([ADR-0004](../decisions/0004-care-event-vocabulary.md)) |
+| [agent-platform#15](https://github.com/monthop-gmail/agent-platform/issues/15) | ยังไม่มี `consent/v1` | ✅ รับเข้าเป็น ADR-0012 + publish แล้ว — implementation ของเราปรับตามครบ รวมถึงลบ field `status` ที่ contract ห้าม ([ADR-0007](../decisions/0007-consent-and-data-access.md)) |
 
-ทั้งสองข้อบันทึกไว้ใน [`platform-contract.yaml`](../platform-contract.yaml) ช่อง `gaps` ด้วย
-เพื่อให้ platform เห็นว่า consumer ติดอะไรอยู่โดยไม่ต้องมาถาม
+ช่อง `gaps` ใน [`platform-contract.yaml`](../platform-contract.yaml) ว่างแล้ว — ที่ปิดไปย้ายไปอยู่ `resolved_gaps`
+**เจอช่องว่างใหม่เมื่อไร เปิด issue ที่ต้นทางแล้วเพิ่มกลับเข้า `gaps` ด้วย** เพื่อให้ platform
+เห็นสถานะจริงของ consumer โดยไม่ต้องมาถาม
 
 ## Contract-first — กติกาที่กันทีมชนกัน
 

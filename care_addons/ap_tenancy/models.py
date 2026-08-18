@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from core.db import Base
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from care_addons.ap_tenancy.clock import now as _now
@@ -57,8 +57,11 @@ class ApTenantMember(Base):
 class ApConsentGrant(Base):
     """ความยินยอมให้เข้าถึงข้อมูลของ subject หนึ่งราย
 
-    consent/v1 — who · can access · which data · for what purpose · for how long
+    conform `consent/v1` ของ agent-platform (เสนอโดยเราเอง · agent-platform#15 → ADR-0012)
     🔒 การมีความสัมพันธ์ไม่ให้สิทธิ์อะไรโดยอัตโนมัติ ต้องมี grant เสมอ (ADR-0007)
+
+    🔒 **ไม่มีคอลัมน์ `status`** ตาม platform_rules ของ consent/v1 — สถานะคำนวณจาก
+       `revoked_at` และ `expires_at` เท่านั้น เก็บซ้ำเมื่อไรมัน drift แล้วไม่มีใครรู้ว่าอันไหนถูก
     """
 
     __tablename__ = "ap_consent_grant"
@@ -77,7 +80,14 @@ class ApConsentGrant(Base):
     purpose: Mapped[str] = mapped_column(String(32), default="daily_care")
     granted_by_type: Mapped[str] = mapped_column(String(16), default="human")
     granted_by_id: Mapped[str] = mapped_column(String(63))
+    # เมื่อผู้ให้ความยินยอมไม่ใช่เจ้าของข้อมูลเอง — ให้แทนโดยอำนาจอะไร
+    authority_basis: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(63), nullable=True)
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # การเพิกถอนต้องบันทึกว่าใครถอนและเพราะอะไร ด้วยมาตรฐานเดียวกับ granted_by
+    # "ถูกถอนแล้ว" ไม่ใช่ audit record · "ใครถอนเมื่อไร เพราะอะไร" คือ audit record
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    revoked_by_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    revoked_by_id: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    revoked_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -52,7 +52,7 @@ async def record(
         session,
         scope,
         event_type="STATE_TRANSITION",
-        subject_type="artifact",
+        subject_type="record",
         subject_id=entry.entry_id,
         care_event_type="care.question.recorded" if entry_type == "question" else "care.journal.recorded",
         severity="low",

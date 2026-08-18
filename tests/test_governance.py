@@ -76,6 +76,7 @@ async def test_consent_is_required_even_inside_the_same_tenant(session, tenant):
             grantee=tenancy.Principal(type="human", id="user-7"),
             scopes=["routine.read"],
             granted_by=tenancy.Principal(type="human", id="user-1"),
+            authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
         )
         await session.commit()
 
@@ -99,13 +100,16 @@ async def test_revoked_consent_takes_effect_immediately(session, tenant):
             grantee=tenancy.Principal(type="human", id="user-8"),
             scopes=["routine.read"],
             granted_by=tenancy.Principal(type="human", id="user-1"),
+            authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
         )
         await session.commit()
 
         viewer = scope_for(tenant, "user-8")
         assert await patients.get_patient(session, viewer, patient.patient_id)
 
-        await tenancy.revoke_consent(session, admin, grant.grant_id)
+        await tenancy.revoke_consent(
+            session, admin, grant.grant_id, reason="ครอบครัวขอถอนสิทธิ์หลังเปลี่ยนผู้ดูแล"
+        )
         await session.commit()
 
         with pytest.raises(tenancy.ConsentDenied):

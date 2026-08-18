@@ -122,10 +122,24 @@ async def grant_consent(
     scopes: list[str],
     purpose: str = "daily_care",
     granted_by: Principal,
+    authority_basis: str | None = None,
     expires_at: datetime | None = None,
 ) -> ApConsentGrant:
+    """สร้างความยินยอมหนึ่งใบ — conform `consent/v1`
+
+    `authority_basis` บังคับเมื่อผู้ให้ความยินยอมไม่ใช่เจ้าของข้อมูลเอง
+    (contract บอกว่า optional แต่เราบังคับ เพราะโดเมนนี้ผู้ให้แทนคือกรณีปกติ
+    ไม่ใช่ข้อยกเว้น — ถ้าไม่บันทึก audit จะตอบไม่ได้ว่าทำไมคนนั้นให้แทนได้)
+    """
     if not scopes:
         raise ValueError("consent ต้องระบุ scope อย่างน้อยหนึ่งอย่าง — grant ที่ไม่มี scope ไม่มีความหมาย")
+    if not purpose:
+        raise ValueError("consent ต้องระบุ purpose — ความยินยอมที่ไม่บอกวัตถุประสงค์ตอบ audit ไม่ได้")
+    if granted_by.id != subject_id and not authority_basis:
+        raise ValueError(
+            f"{granted_by.id} ให้ความยินยอมแทน {subject_id} จึงต้องระบุ authority_basis "
+            f"ว่าให้แทนโดยอำนาจอะไร (ผู้อนุบาล · หนังสือมอบอำนาจ · ผู้ปกครองตามกฎหมาย)"
+        )
     grant = ApConsentGrant(
         grant_id=new_id("grant"),
         tenant_id=scope.tenant_id,
@@ -136,6 +150,8 @@ async def grant_consent(
         purpose=purpose,
         granted_by_type=granted_by.type,
         granted_by_id=granted_by.id,
+        authority_basis=authority_basis,
+        workspace_id=scope.workspace_id,
         granted_at=now(),
         expires_at=expires_at,
     )
@@ -144,13 +160,24 @@ async def grant_consent(
     return grant
 
 
-async def revoke_consent(session: AsyncSession, scope: TenantScope, grant_id: str) -> None:
+async def revoke_consent(
+    session: AsyncSession, scope: TenantScope, grant_id: str, *, reason: str
+) -> None:
+    """เพิกถอนความยินยอม — มีผลทันที
+
+    `reason` บังคับตาม consent/v1 (`dependentRequired`) เพราะ "ถอนเพราะเจ้าของเปลี่ยนใจ"
+    กับ "ถอนเพราะผู้รับละเมิดเงื่อนไข" ต่างกันมากตอน audit
+    """
+    if not reason or not reason.strip():
+        raise ValueError("การเพิกถอนต้องระบุเหตุผล — consent/v1 บังคับ revoked_reason")
     grant = await session.get(ApConsentGrant, grant_id)
     if grant is None:
         raise ConsentDenied(f"ไม่พบ consent grant: {grant_id}")
     assert_same_tenant(scope, grant)
     grant.revoked_at = now()
-    grant.active = False
+    grant.revoked_by_type = scope.principal.type
+    grant.revoked_by_id = scope.principal.id
+    grant.revoked_reason = reason.strip()
     await session.flush()
 
 
@@ -166,7 +193,8 @@ async def has_consent(
             select(ApConsentGrant).where(
                 ApConsentGrant.subject_id == subject_id,
                 ApConsentGrant.grantee_id == scope.principal.id,
-                ApConsentGrant.active.is_(True),
+                # ไม่มีคอลัมน์ status — สถานะคือผลของ revoked_at/expires_at เท่านั้น
+                ApConsentGrant.revoked_at.is_(None),
             ),
             ApConsentGrant,
             scope,
@@ -181,6 +209,30 @@ async def has_consent(
         if required_scope in (grant.scopes or []) or "care.manage" in (grant.scopes or []):
             return True
     return False
+
+
+def as_consent_grant(grant: ApConsentGrant) -> dict:
+    """payload ตาม `consent/v1` — ใช้ส่งออกนอกระบบและให้ payload_check validate"""
+    payload: dict = {
+        "grant_id": grant.grant_id,
+        "tenant_id": grant.tenant_id,
+        "subject_id": grant.subject_id,
+        "grantee": {"type": grant.grantee_type, "id": grant.grantee_id},
+        "scopes": list(grant.scopes or []),
+        "purpose": grant.purpose,
+        "granted_by": {"type": grant.granted_by_type, "id": grant.granted_by_id},
+        "granted_at": grant.granted_at.isoformat(),
+        "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
+    }
+    if grant.workspace_id:
+        payload["workspace_id"] = grant.workspace_id
+    if grant.authority_basis:
+        payload["authority_basis"] = grant.authority_basis
+    if grant.revoked_at:
+        payload["revoked_at"] = grant.revoked_at.isoformat()
+        payload["revoked_by"] = {"type": grant.revoked_by_type, "id": grant.revoked_by_id}
+        payload["revoked_reason"] = grant.revoked_reason
+    return payload
 
 
 async def require_consent(

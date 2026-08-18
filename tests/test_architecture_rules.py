@@ -136,10 +136,10 @@ def test_care_tick_is_registered_as_a_periodic_job():
     """closed loop ต้องมีอะไรมาปลุก — ถ้า care_tick กลับไปเป็น @background_job เฉย ๆ
     ระบบจะเงียบสนิทโดยไม่มี error ใด ๆ ซึ่งแปลว่าไม่มีใครเตือนผู้ป่วยและไม่มีใครรู้
 
-    ต้องการ pstack >= v0.2.0 (willpower-institute/pstack#2)
+    ต้องการ pstack >= v0.2.2 (willpower-institute/pstack#2, #8)
     """
-    from core.jobs import _periodic  # kernel ยังไม่มี public accessor — ดู pstack#2
+    from core.jobs import periodic_jobs
 
     import care_addons.care_escalation.jobs  # noqa: F401  ลงทะเบียนตอน import
 
-    assert "care_tick" in [fn.__name__ for fn, _ in _periodic]
+    assert "care_tick" in [fn.__name__ for fn, _ in periodic_jobs()]

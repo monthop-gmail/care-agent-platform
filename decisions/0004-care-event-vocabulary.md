@@ -31,11 +31,17 @@
 อยู่ใน `attributes` — **ห้ามสร้าง `job_id` ปลอมให้ event ที่ไม่ได้เกิดจาก job** (invariant ของ platform)
 
 **บันทึกของโดเมนที่ไม่ได้เกิดจาก job** (สร้างผู้ป่วย · medication version ใหม่ · journal entry)
-ใช้ `subject_type: artifact` โดย `subject_id` คือ id ของบันทึกนั้น และระบุชนิดไว้ที่
-`attributes.record_type` — เหตุผลคือ `SubjectType` เป็น**ชุดปิดของ platform** เราเพิ่ม `patient`
-เองไม่ได้ และบันทึกเหล่านี้คือสิ่งที่ระบบผลิตขึ้นและต้องตามรอยได้ ซึ่งตรงกับความหมายของ `artifact`
-ที่สุดในชุดที่มี — ถ้าวันหนึ่ง platform เปิด `SubjectType` ให้ขยายได้ ให้ย้ายมาใช้ค่าที่ตรงกว่า
-แล้วเขียน ADR ใหม่ที่ supersede ข้อนี้
+ใช้ `subject_type: record` โดย `subject_id` คือ id ของบันทึกนั้น และระบุชนิดไว้ที่
+`attributes.record_type` — platform ไม่รู้จักชนิดของโดเมนและไม่ควรรู้
+
+> **อัปเดต 2026-08-19** — เดิมข้อนี้ใช้ `artifact` เพราะ `SubjectType` เป็นชุดปิดที่ไม่มีค่าที่ตรง
+> ซึ่งทำให้ audit แยกไม่ออกระหว่าง "ของที่ execution ผลิต" กับ "บันทึกที่มีอยู่จริงในโลก"
+> เราเปิด [agent-platform#14](https://github.com/monthop-gmail/agent-platform/issues/14)
+> และ platform เพิ่มค่า `record` ให้แล้ว (`8f7dd13`) — ย้ายมาใช้ค่าที่ตรงกว่าเรียบร้อย
+>
+> ข้อควรระวังที่ต้นทางฝากไว้: ถ้าวันหนึ่ง `metadata.record_type` กลายเป็นสิ่งที่ **policy
+> ตัดสินใจจากมัน** (ไม่ใช่แค่ป้ายกำกับใน audit) นั่นคือการเปลี่ยนความหมายของ `record`
+> ซึ่งเข้า Rule 2 ของ ADR-0006 และต้องมี RFC ที่ต้นทางก่อน
 
 ### 2. เพิ่ม care event type แบบ additive
 
