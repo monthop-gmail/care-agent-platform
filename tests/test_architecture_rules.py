@@ -184,3 +184,31 @@ def test_every_session_opened_in_addons_binds_a_tenant():
         "ไฟล์ที่เปิด session เองแต่ไม่ได้ผูก tenant — RLS จะให้ 0 แถวเงียบ ๆ:\n"
         + "\n".join(offenders)
     )
+
+
+def test_pstack_ref_is_the_same_everywhere():
+    """`PSTACK_REF` ต้องตรงกันทั้ง 3 ที่ — .env.example · Dockerfile ARG · compose default
+
+    ทั้งสามที่ต่างคนต่างมีค่า default ของตัวเอง ถ้าปล่อยให้ drift:
+    - `docker build .` (ไม่ส่ง --build-arg) จะได้ image ที่ pin kernel คนละเวอร์ชันกับที่เทสไว้
+    - เจอจริง: merge PR ที่ bump เป็น v0.3.1 แต่ Dockerfile ยังค้าง v0.3.0 ซึ่งไม่มี
+      `core.tenancy.bind_tenant` ที่โค้ดเราใช้ 7 จุด → image พังตั้งแต่ import
+      (`ImportError: cannot import name 'bind_tenant'`) โดย CI ไม่จับเพราะ compose ส่งค่าทับให้
+    """
+    import re
+
+    env = re.search(r"^PSTACK_REF=(\S+)", (ROOT / ".env.example").read_text(encoding="utf-8"), re.MULTILINE)
+    dockerfile = re.search(
+        r"^ARG PSTACK_REF=(\S+)", (ROOT / "Dockerfile").read_text(encoding="utf-8"), re.MULTILINE
+    )
+    compose = re.findall(
+        r"PSTACK_REF:\s*\$\{PSTACK_REF:-([^}]+)\}",
+        (ROOT / "docker-compose.yml").read_text(encoding="utf-8"),
+    )
+
+    assert env and dockerfile and compose, "หา PSTACK_REF ไม่ครบทั้งสามที่"
+    refs = {".env.example": env.group(1), "Dockerfile": dockerfile.group(1)}
+    for index, value in enumerate(compose):
+        refs[f"docker-compose[{index}]"] = value
+
+    assert len(set(refs.values())) == 1, f"PSTACK_REF ไม่ตรงกัน: {refs}"
