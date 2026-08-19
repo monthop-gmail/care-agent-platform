@@ -97,7 +97,7 @@ gaps:
       ซึ่งต้องเป็นเท็จทันทีที่เขาลาออก ไม่ใช่รอให้ใครไปกดเพิกถอน
       เราแก้ที่ repo นี้ด้วยฟิลด์ `conditions` + registry ของตัวตรวจ (ADR-0010)
       และเสนอให้ platform พิจารณารับเข้า contract
-    tracked_by: null
+    tracked_by: https://github.com/monthop-gmail/agent-platform/issues/25
 
 resolved_gaps:
   - id: subject-type-for-domain-records
