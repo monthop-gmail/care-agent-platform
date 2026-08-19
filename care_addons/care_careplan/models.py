@@ -8,11 +8,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from core.clock import now
 from core.db import Base
 from sqlalchemy import JSON, Boolean, Date, DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from care_addons.ap_tenancy.clock import now
 
 TASK_TYPES = [
     "exercise", "hydration", "topical_treatment", "wound_care",

@@ -13,14 +13,13 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from core.clock import now
+from core.tenancy import TenantScope, new_id, scoped
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
 from care_addons.ap_policy.services import care_action
-from care_addons.ap_tenancy.clock import now
-from care_addons.ap_tenancy.ids import new_id
-from care_addons.ap_tenancy.services import TenantScope, scoped
 from care_addons.care_inventory.models import CATEGORIES, CareInventoryItem
 from care_addons.care_patient.services import get_patient
 

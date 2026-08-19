@@ -9,11 +9,11 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from core.clock import FakeClock
+from core.tenancy import Principal
 
 from care_addons.ap_approval import services as approvals
 from care_addons.ap_policy.engine import evaluate
-from care_addons.ap_tenancy.clock import FakeClock
-from care_addons.ap_tenancy.services import Principal
 from care_addons.care_medication import services as meds
 from tests.conftest import audit_events, scope_for, setup_patient
 
@@ -23,16 +23,16 @@ SON = {"type": "human", "id": "user-son", "display_name": "ลูกชาย"}
 
 
 def agent_scope(tenant_id: str):
-    from care_addons.ap_tenancy.services import TenantScope
+    from core.tenancy import TenantScope
 
     return TenantScope(tenant_id=tenant_id, principal=AGENT)
 
 
 async def _let_agent_read_the_chart(session, tenant_id, patient_id):
     """agent ก็ต้องมี consent เหมือนคน — ไม่มีสิทธิ์พิเศษเพราะเป็นเครื่อง (ADR-0007)"""
-    from care_addons.ap_tenancy import services as tenancy
+    from care_addons.ap_consent import services as consent
 
-    await tenancy.grant_consent(
+    await consent.grant_consent(
         session,
         scope_for(tenant_id),
         subject_id=patient_id,
@@ -287,7 +287,8 @@ async def test_direct_confirm_closes_the_pending_request_without_approving_it(se
 
 
 async def test_requests_are_not_visible_across_tenants(session, tenant):
-    from care_addons.ap_tenancy import services as tenancy
+    from addons.tenancy import services as kernel_tenancy
+
     from tests.conftest import use_tenant
 
     with FakeClock("2026-08-19T01:00:00+00:00"):
@@ -296,7 +297,7 @@ async def test_requests_are_not_visible_across_tenants(session, tenant):
         await session.commit()
 
         other = f"{tenant}-other"
-        await tenancy.create_tenant(session, other, "อีกครอบครัว")
+        await kernel_tenancy.create_tenant(session, other, "อีกครอบครัว")
         await session.commit()
         await use_tenant(session, other)
         assert await approvals.pending_requests(session, scope_for(other)) == []

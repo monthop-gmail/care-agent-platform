@@ -68,9 +68,34 @@ pstack ออก [PR#9](https://github.com/willpower-institute/pstack/pull/9) (v
 **หนี้ทางเทคนิคที่ตั้งใจก่อ:** เมื่อ pstack ออก Phase 5 (multi-tenant) ให้ทำ PR
 ย้าย `ap_tenancy` ขึ้น kernel แล้วเหลือ shim ในนี้ไว้หนึ่งรอบก่อนลบ — จดไว้เป็น issue ตั้งแต่วันแรก
 
+## อัปเดต 2026-08-19 — รอบที่ 2 จบแล้ว: `ap_tenancy` ถูกลบ
+
+ย้าย import ทั้งหมด (53 ไฟล์) ไปที่ต้นทางจริงแล้วลบโมดูล shim ทิ้ง:
+
+| import เดิม | ปลายทาง |
+|---|---|
+| `care_addons.ap_tenancy.clock` | `core.clock` |
+| `care_addons.ap_tenancy.ids` | `core.tenancy` |
+| `care_addons.ap_tenancy.deps` | `addons.tenancy.deps` |
+| `care_addons.ap_tenancy.services` (tenant primitives) | `core.tenancy` |
+| `care_addons.ap_tenancy.services` (tenant/member CRUD) | `addons.tenancy.services` |
+| `care_addons.ap_tenancy.services` (consent) | `care_addons.ap_consent.services` |
+
+- `depends` ของทุก `care_*` เปลี่ยนจาก `ap_tenancy` เป็น `tenancy` ของ kernel
+  (`tests/test_architecture_rules.py` บังคับข้อนี้อยู่)
+- endpoint `/api/platform/tenants` ที่ deprecated ไว้หนึ่งรอบถูกลบ — ใช้ `/api/tenancy/tenants`
+  ของ kernel แทน (permission เปลี่ยนจาก `platform.tenancy.manage` เป็น `tenancy.manage`)
+- deployment ที่เคยติดตั้ง `ap_tenancy` มีตาราง `alembic_version_ap_tenancy` ค้างอยู่
+  ไม่มีผลกับการทำงาน แต่กวาดทิ้งได้ด้วย `DROP TABLE alembic_version_ap_tenancy;`
+  (ดูขั้นตอนใน README §adopt)
+
+**สิ่งที่ไม่เปลี่ยน:** กฎ 4 ข้อของ `ap_*` ยังอยู่ครบ และ `ap_consent` · `ap_audit` · `ap_policy` ·
+`ap_approval` ยังเป็นชั้น conformance ที่ `care_*` ทุกตัวต้องผ่าน
+
 ## Consequences
 
 - ทีม B–E เริ่มงานได้ทันทีโดยไม่ต้องรอ pstack
-- `care_*` ทุกตัวต้องมี `depends: ["ap_tenancy", "ap_audit", "ap_policy"]` เป็นอย่างน้อย — ไม่มีข้อยกเว้น
+- `care_*` ทุกตัวต้องมี `depends: ["tenancy", "ap_audit", "ap_policy"]` เป็นอย่างน้อย — ไม่มีข้อยกเว้น
+  (เดิมคือ `ap_tenancy` · เปลี่ยนเมื่อ tenancy ขึ้น kernel — ดูอัปเดตรอบที่ 2 ข้างบน)
 - มีความเสี่ยงว่า `ap_*` จะโตจนกลายเป็น kernel คู่ขนาน → คุมด้วยกฎ 4 ข้อข้างบน + review ของทีม A
 - ถ้าวันหนึ่ง pstack ไม่รับ `ap_tenancy` ขึ้น kernel ก็ยังไม่พัง — มันทำงานเป็น addon ได้ตลอดไป

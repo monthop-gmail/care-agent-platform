@@ -5,13 +5,12 @@
 
 from __future__ import annotations
 
+from core.tenancy import Principal, TenantScope, new_id, scoped
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
 from care_addons.ap_policy.services import care_action
-from care_addons.ap_tenancy.ids import new_id
-from care_addons.ap_tenancy.services import Principal, TenantScope, scoped
 from care_addons.care_journal.models import CLASSIFICATIONS, ENTRY_TYPES, CareJournalEntry
 from care_addons.care_patient.services import get_patient
 

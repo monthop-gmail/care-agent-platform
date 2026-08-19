@@ -7,9 +7,9 @@
 from __future__ import annotations
 
 import pytest
+from core.clock import FakeClock
+from core.tenancy import Principal
 
-from care_addons.ap_tenancy.clock import FakeClock
-from care_addons.ap_tenancy.services import Principal
 from care_addons.care_escalation import services as jobs
 from care_addons.care_journal import services as journal
 from care_addons.care_line import inbound

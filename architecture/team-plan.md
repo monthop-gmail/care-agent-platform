@@ -9,7 +9,8 @@
 
 ```
 care_addons/
-├── ap_tenancy/       ทีม A   Tenant/Workspace/Consent + tenant-scoped access
+├── ap_consent/       ทีม A   ความยินยอมเข้าถึงข้อมูลของบุคคล (consent/v1)
+│                          (tenant/workspace/scope ขึ้น kernel แล้ว — `tenancy` ของ pstack)
 ├── ap_audit/         ทีม A   append-only audit event store (event/v1)
 ├── ap_policy/        ทีม A   action_risk × authority_map → authority
 ├── ap_approval/      ทีม A   human approval (M3)
@@ -44,7 +45,7 @@ M0 ── งานเปิดทาง (ทีม A · ก่อนใคร�
       docker compose up ขึ้นได้พร้อม healthz
 
 M1 ── Foundation (ทีม A)
-      ap_tenancy · ap_audit · ap_policy
+      ap_tenancy · ap_audit · ap_policy   (ap_tenancy ถูกยกขึ้น kernel แล้วในภายหลัง)
       DoD: tenant isolation มี test พิสูจน์ · ทุก state change มี event · action ที่ไม่ประกาศ risk ถูกปฏิเสธ
 
 M2 ── Care Loop (ทีม B ขนานกับ ทีม C)
@@ -79,7 +80,8 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
 
 | addon | สถานะ |
 |---|---|
-| `ap_tenancy` | ✅ tenant/workspace/membership/consent + tenant guard + FakeClock |
+| `ap_consent` | ✅ consent 5 มิติ + เพิกถอน + `as_consent_grant` ตาม `consent/v1` |
+| ~~`ap_tenancy`~~ | ✅ ยกขึ้น kernel ครบแล้ว — โมดูลถูกลบ ใช้ `tenancy`/`core.tenancy`/`core.clock` ตรง ๆ |
 | `ap_audit` | ✅ append-only store + intake validation + `/trail/{correlation_id}` |
 | `ap_policy` | ✅ authority_map + floor + `@care_action` + catalog endpoint |
 | `care_patient` | ✅ patient/caregiver/care team/care profile |
@@ -116,10 +118,11 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
    รัน `python -m arq core.worker.WorkerSettings` · ตั้งแต่ M3 มี `care_daily_tick`
    (ทุก 15 นาที) เดินรอบวัน: สรุปประจำวัน + ปิดคำขออนุมัติที่เลยกำหนด
 6. ✅ ~~adopt `tenancy` ของ kernel~~ — เสร็จ 2026-08-19 (pstack v0.3.1)
-   `ap_tenancy` เหลือเป็น shim ที่ re-export ของ kernel · `ap_consent` แยกออกมาเป็นโมดูลของตัวเอง
+   `ap_consent` แยกออกมาเป็นโมดูลของตัวเอง
    · role แอปเป็น `NOSUPERUSER NOBYPASSRLS` · RLS เปิดครบ 15 ตาราง (`conformance/rls_check.py`)
-7. 🟡 **รอบสองของการ adopt** — ย้าย import ที่ยังเรียกผ่าน `ap_tenancy` ไปที่ `core.tenancy` ตรง ๆ
-   แล้วลบ shim + `DROP TABLE alembic_version_ap_tenancy` (งานกวาดล้าง ไม่บล็อกอะไร)
+7. ✅ ~~รอบสองของการ adopt~~ — เสร็จ 2026-08-19: ย้าย import 53 ไฟล์ไป `core.tenancy`/`core.clock`/
+   `addons.tenancy.*` แล้ว **ลบโมดูล `ap_tenancy` ทิ้ง** · endpoint `/api/platform/tenants` ที่
+   deprecated ไว้ก็ถูกลบ ใช้ `/api/tenancy/tenants` ของ kernel แทน (ADR-0003 อัปเดตรอบที่ 2)
 
 ## ของที่รอฝั่ง pstack
 
@@ -134,7 +137,7 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
 | [pstack#6](https://github.com/willpower-institute/pstack/issues/6) | `line.message.received` ไม่มี `reply_token` | ✅ **v0.2.2** — event พก `reply_token` + มี `client.respond()` (reply ก่อน แล้ว fallback push) · `care_line` ใช้แล้ว ตอบผู้ป่วยไม่กิน push quota |
 | [pstack#7](https://github.com/willpower-institute/pstack/issues/7) | `makemigration` ออก revision เปล่าเงียบ ๆ | ✅ **v0.2.1** — ปฏิเสธ + ลบไฟล์เปล่าให้ + บอกวิธีแก้ |
 | [pstack#8](https://github.com/willpower-institute/pstack/issues/8) | DX: engine ผูก event loop + accessor ของ periodic job | ✅ **v0.2.1** — `core.testing.isolated_session` + `core.jobs.periodic_jobs()` (เทสเราใช้ public accessor แล้ว) |
-| [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — เคาะแล้ว: RLS + คง `scoped()` · consent คงไว้ที่ repo นี้ ([ADR-0007](../decisions/0007-consent-and-data-access.md)) · kernel จะชื่อ `tenancy` (ตัด `ap_`) เมื่อยกขึ้นแล้วเราลบ `ap_tenancy` |
+| [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — เคาะแล้ว: RLS + คง `scoped()` · consent คงไว้ที่ repo นี้ ([ADR-0007](../decisions/0007-consent-and-data-access.md)) · kernel ชื่อ `tenancy` (ตัด `ap_`) · **เราลบ `ap_tenancy` เรียบร้อยแล้ว 2026-08-19** |
 | [pstack-app-template#1](https://github.com/willpower-institute/pstack-app-template/issues/1) | Dockerfile ของ template copy แค่ addons | ✅ แก้ทั้งสองฝั่งแล้ว |
 
 **กติกา:** เจอข้อจำกัดของ kernel ให้เปิด issue ที่ pstack แล้วเพิ่มแถวในตารางนี้
@@ -165,25 +168,42 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
 - [ ] มี migration ถ้าแตะ schema (`python ../pstack/cli.py makemigration <module> -m "..."`)
 - [ ] state change ทุกจุดออก audit event (ADR-0004) — ไม่มี silent update
 - [ ] action ที่แตะโลกจริงประกาศ `action_risk` และผ่าน `ap_policy` (ADR-0006)
-- [ ] query ข้อมูลผู้ป่วยผ่าน helper ของ `ap_tenancy` ไม่ใช่ `select()` ตรง (ADR-0007)
+- [ ] query ข้อมูลผู้ป่วยผ่าน `scoped()` ของ `core.tenancy` ไม่ใช่ `select()` ตรง (ADR-0007)
 - [ ] มี test ที่พิสูจน์ negative case ไม่ใช่แค่ happy path
 - [ ] `pytest tests/ -q` และ `python conformance/drift_check.py` ผ่าน
 - [ ] อ้าง ADR ที่เกี่ยวข้องใน PR description
 
 ## Definition of Done ของ MVP (จาก blueprint §26)
 
-- [ ] สร้าง patient / caregiver / routine / medication / appointment ได้
-- [ ] agent ส่ง reminder ได้ · ผู้ป่วย acknowledge ได้ · missed ถูกตรวจพบ
-- [ ] escalate ไป caregiver ได้
-- [ ] ทุก event มี audit trail ที่ตอบได้ว่า "ทำไม agent ถึงส่งข้อความนี้"
-- [ ] tenant isolation ทำงาน (มี test ข้าม tenant แล้วต้องไม่เห็นกัน)
-- [ ] policy จำกัด action ของ agent ได้จริง
-- [ ] ไม่มี medical diagnosis/action ที่ไม่ได้รับอนุญาต
-- [ ] `docker compose up` รัน PoC ได้
-- [ ] มี automated scenario tests
+ทุกข้อติ๊กได้ต่อเมื่อมี **เทสหรือหลักฐานที่รันซ้ำได้** ชี้ไว้ — ไม่ใช่เพราะ "น่าจะทำได้แล้ว"
+
+- [x] สร้าง patient / caregiver / routine / medication / appointment ได้
+      → `test_api_end_to_end.py::test_full_care_loop_over_http` + scenario ของแต่ละโดเมน
+- [x] agent ส่ง reminder ได้ · ผู้ป่วย acknowledge ได้ · missed ถูกตรวจพบ
+      → S1 `test_s1_confirm_closes_loop_without_escalation` · S2 `test_s2_silence_escalates_to_caregiver`
+- [x] escalate ไป caregiver ได้ → S2 + `care_safety` (S15) + ขั้นตอนที่ค้าง (S6)
+- [x] ทุก event มี audit trail ที่ตอบได้ว่า "ทำไม agent ถึงส่งข้อความนี้"
+      → `audit.trail(correlation_id)` เรียงถูกแม้เวลาเท่ากัน (`sequence_no`)
+      · `test_trail_order_survives_events_that_share_a_timestamp`
+- [x] tenant isolation ทำงาน (มี test ข้าม tenant แล้วต้องไม่เห็นกัน)
+      → `test_tenant_isolation.py` (ชั้น app) + `conformance/rls_check.py` (ชั้น DB · 21 ตาราง)
+- [x] policy จำกัด action ของ agent ได้จริง
+      → S9 + **เพดานของ profile** ที่บังคับจริงแล้ว (`test_governance.py::test_profile_*`)
+- [x] ไม่มี medical diagnosis/action ที่ไม่ได้รับอนุญาต
+      → ยาเป็น `human_command_required` + `profile.tools.deny` + คิวอนุมัติที่ไม่มี auto-approve
+      · สรุปประจำวัน/adherence มีเทสห้ามคำที่เป็นการตีความอาการ
+- [x] `docker compose up` รัน PoC ได้
+      → ยืนยันจริง 2026-08-19: build → 22 โมดูลขึ้นครบ → worker ลงทะเบียน `care_tick`,
+        `care_daily_tick` → สร้าง tenant/patient/routine/careplan/safety ผ่าน HTTP → สรุปประจำวันออก
+- [x] มี automated scenario tests → 15 ไฟล์ · S1–S15 · 119 เทส รันทั้ง sqlite และ Postgres
 - [x] เชื่อมกับ `agent-platform` ผ่าน contract ที่กำหนด — เป็น consumer ตาม ADR-0006 ครบ 3 ข้อ
       ([`platform-contract.yaml`](../platform-contract.yaml) · drift check · payload check)
-- [ ] สร้าง Care Agent ให้ผู้ป่วยหลายคนบน platform เดียวกันได้
+- [x] สร้าง Care Agent ให้ผู้ป่วยหลายคนบน platform เดียวกันได้
+      → หลาย tenant/หลายผู้ป่วยในฐานข้อมูลเดียว แยกกันสองด่าน (`scoped()` + RLS)
+        · `care_orchestrator` เดินรอบวันให้ทุก tenant แบบ transaction ต่อ tenant
+
+**MVP ครบตามนิยามของ blueprint แล้ว** — สิ่งที่เหลือคือ M6 (connector ข้ามองค์กร)
+และงาน hardening ที่ไม่ได้อยู่ในนิยาม MVP
 
 ## Scenario tests ที่ต้องมี (ไม่ใช่ unit test)
 

@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import logging
 
+from core.tenancy import Principal, TenantScope
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from care_addons.ap_tenancy.services import Principal, TenantScope
 from care_addons.care_escalation.services import register_sender
 from care_addons.care_line import services as line
 

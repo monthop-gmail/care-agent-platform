@@ -10,11 +10,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from core.clock import now
 from core.db import Base
 from sqlalchemy import JSON, Date, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
-
-from care_addons.ap_tenancy.clock import now
 
 ITEM_KINDS = [
     "clothing", "keys", "wallet", "glasses", "phone", "document", "hearing_aid", "cane", "other",

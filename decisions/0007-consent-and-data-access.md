@@ -19,7 +19,7 @@ blueprint (`ref` §14) ระบุ consent เป็น 5 มิติ: **who �
 ### 1. การเข้าถึงข้อมูลผู้ป่วยต้องผ่านสองด่านเสมอ
 
 ```
-request → RBAC (pstack: ทำ action นี้ได้ไหม) → consent (ap_tenancy: กับผู้ป่วยคนนี้ ข้อมูลชุดนี้ ตอนนี้ ได้ไหม) → data
+request → RBAC (pstack: ทำ action นี้ได้ไหม) → consent (ap_consent: กับผู้ป่วยคนนี้ ข้อมูลชุดนี้ ตอนนี้ ได้ไหม) → data
 ```
 
 ผ่านด่านแรกด่านเดียวไม่พอ — caregiver ที่มี `care.patient.read` อ่านได้เฉพาะผู้ป่วยที่ตัวเองมี consent เท่านั้น
@@ -62,7 +62,8 @@ consent ข้าม tenant ไม่ได้ ไม่ว่ากรณีใ
 
 ## Consequences
 
-- ทุก query ที่อ่านข้อมูลผู้ป่วยต้องผ่าน helper ของ `ap_tenancy` — ห้าม `select(Patient)` ตรง ๆ ใน `care_*`
+- ทุก query ที่อ่านข้อมูลผู้ป่วยต้องผ่าน `scoped()` ของ `core.tenancy` — ห้าม `select(Patient)` ตรง ๆ ใน `care_*`
+  (เดิมเขียนว่า helper ของ `ap_tenancy` · โมดูลนั้นถูกลบเมื่อ tenancy ขึ้น kernel — ADR-0003 รอบที่ 2)
   (มี test บังคับ + review ของทีม A)
 - ต้องมีหน้าจัดการ consent ที่ caregiver/ผู้ป่วยเข้าใจได้ ไม่ใช่ config ของ admin เท่านั้น
 - รองรับ PDPA ได้ตั้งแต่ต้น: ตอบได้ว่าใครเข้าถึงข้อมูลอะไรเมื่อไร และลบ/ถอนได้จริง

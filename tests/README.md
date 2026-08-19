@@ -41,7 +41,7 @@ with FakeClock("2026-08-19T01:00:00+00:00") as clock:
     clock.advance(minutes=11)     # เลื่อนไปดูว่า retry ทำงานไหม
 ```
 
-โค้ดทุกที่ต้องเรียก `care_addons.ap_tenancy.clock.now()` ไม่ใช่ `datetime.now()`
+โค้ดทุกที่ต้องเรียก `core.clock.now()` ไม่ใช่ `datetime.now()`
 (มีเทสบังคับข้อนี้ใน `test_architecture_rules.py`)
 
 ## กรองข้อมูลด้วย tenant เสมอ แม้แต่ในเทส

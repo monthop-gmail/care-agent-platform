@@ -20,12 +20,12 @@ from __future__ import annotations
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
+from core.clock import now
+from core.tenancy import TenantScope
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
 from care_addons.ap_policy.services import care_action
-from care_addons.ap_tenancy.clock import now
-from care_addons.ap_tenancy.services import TenantScope
 from care_addons.care_appointment import services as appointments
 from care_addons.care_medication import services as medications
 from care_addons.care_patient.services import care_team, feature_enabled, get_patient

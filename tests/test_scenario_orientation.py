@@ -9,9 +9,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from core.clock import FakeClock, now
+from core.tenancy import Principal
 
-from care_addons.ap_tenancy.clock import FakeClock, now
-from care_addons.ap_tenancy.services import Principal
 from care_addons.care_appointment import services as appointments
 from care_addons.care_medication import services as meds
 from care_addons.care_orientation import services as orientation

@@ -27,6 +27,10 @@ COPY profiles /app/profiles
 
 # conformance เข้า image ด้วย เพราะ db_role_check ต้องรันจาก "ในเครือข่ายเดียวกับ DB"
 # ซึ่ง compose ไม่ได้ expose port ของ db ออกนอก — ผู้ดูแลจึงรันจาก checkout บนเครื่องตัวเองไม่ได้
+#
+# ⚠️ ใน container รันได้เฉพาะ db_role_check.py และ drift_check.py (อ่านอย่างเดียว)
+#    migration/payload/rls check เริ่มด้วย DROP SCHEMA public CASCADE — มันปฏิเสธตัวเอง
+#    ถ้าไม่ได้ตั้ง CONFORMANCE_ALLOW_DESTRUCTIVE=1 (ดู conformance/_guard.py)
 COPY conformance /app/conformance
 
 EXPOSE 8000

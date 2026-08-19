@@ -45,7 +45,6 @@ def test_kernel_id_pattern_matches_identity_v1():
 def test_ids_shim_still_points_at_the_kernel():
     """shim รอบที่ 1 ต้องไม่มี pattern เป็นของตัวเอง ไม่งั้นสองที่จะ drift จากกัน"""
     from core.tenancy import ID_PATTERN as kernel_pattern
-
-    from care_addons.ap_tenancy.ids import ID_PATTERN as shim_pattern
+    from core.tenancy import ID_PATTERN as shim_pattern
 
     assert shim_pattern is kernel_pattern

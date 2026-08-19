@@ -23,7 +23,9 @@ def care(client, token):
     """tenant + patient + consent ผ่าน API ล้วน ๆ"""
     auth = {"Authorization": f"Bearer {token}"}
     tenant_id = "t-api-demo"
-    client.post("/api/platform/tenants", headers=auth, json={"tenant_id": tenant_id, "display_name": "บ้านทดสอบ"})
+    client.post(
+        "/api/tenancy/tenants", headers=auth, json={"tenant_id": tenant_id, "display_name": "บ้านทดสอบ"}
+    )
 
     headers = {**auth, "X-Tenant-Id": tenant_id}
     patient = client.post(

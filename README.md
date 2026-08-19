@@ -201,6 +201,19 @@ SELECT conname FROM pg_constraint
 
 `ap_consent_grant` **ไม่ต้อง rename** — โมดูล `ap_consent` adopt ตารางเดิมต่อตามประวัติ
 
+### กวาดของที่เหลือหลังลบ shim (2026-08-19)
+
+โมดูล `ap_tenancy` ถูกลบแล้ว (ADR-0003 รอบที่ 2) — deployment เดิมจะมี version table
+ของมันค้างอยู่ ไม่มีผลกับการทำงานเพราะไม่มีโมดูลไหนอ่านมันแล้ว แต่กวาดทิ้งได้:
+
+```sql
+-- ทำหลังจากบูตเวอร์ชันใหม่ผ่านแล้วเท่านั้น (ถ้าต้อง rollback จะได้ยังมีประวัติอยู่)
+DROP TABLE IF EXISTS alembic_version_ap_tenancy;
+```
+
+ผู้ใช้ที่เคยมี permission `platform.tenancy.manage` ต้องได้ `tenancy.manage` ของ kernel แทน
+ถึงจะเรียก `/api/tenancy/tenants` ได้ — superuser ผ่านอยู่แล้วทั้งสองแบบ
+
 ## Conformance กับ agent-platform
 
 repo นี้ประกาศตัวเป็น consumer ผ่าน [`platform-contract.yaml`](platform-contract.yaml)
@@ -215,6 +228,16 @@ repo นี้ประกาศตัวเป็น consumer ผ่าน [`pl
 
 > ต่างกันตรงนี้: `drift_check` ตอบว่า *contract ของเรา* ยังอ้างอิงถูกที่ ·
 > `payload_check` ตอบว่า *ระบบของเรา* ทำตาม contract จริง — ข้อหลังคือข้อที่ ADR-0006 นับ
+
+⚠️ **สคริปต์ไหนรันกับ deployment จริงได้บ้าง**
+
+| สคริปต์ | รันกับ DB จริงได้ไหม |
+|---|---|
+| `drift_check` · `db_role_check` | ✅ อ่านอย่างเดียว |
+| `migration_check` · `payload_check` · `rls_check` | ❌ เริ่มด้วย `DROP SCHEMA public CASCADE` |
+
+สามตัวหลังปฏิเสธตัวเองถ้าไม่ได้ตั้ง `CONFORMANCE_ALLOW_DESTRUCTIVE=1` (CI ตั้งให้ · DB ของ CI ทิ้งได้)
+— ด่านนี้เพิ่มหลังพบว่า `rls_check` ที่รันใน container ลบข้อมูลผู้ป่วยจริงไปทั้งชุด
 
 ## Tenant isolation — สองด่าน
 

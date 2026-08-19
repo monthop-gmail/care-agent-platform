@@ -2,7 +2,8 @@
     "name": "care_orchestrator",
     "version": "0.1.0",
     "depends": [
-        "ap_tenancy",
+        "tenancy",
+        "ap_consent",
         "ap_audit",
         "ap_policy",
         "ap_approval",

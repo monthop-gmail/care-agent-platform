@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from core.clock import now
 from core.db import Base
 from sqlalchemy import JSON, DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from care_addons.ap_tenancy.clock import now
 
 ENTRY_TYPES = ["observation", "question", "concern", "side_effect", "event"]
 CLASSIFICATIONS = ["unclassified", "possibly_relevant", "patient_assigned", "caregiver_assigned"]

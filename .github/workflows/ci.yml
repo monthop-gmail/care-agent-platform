@@ -33,6 +33,9 @@ jobs:
           --health-retries 5
 
     env:
+      # 🔒 migration/payload/rls check เริ่มด้วย DROP SCHEMA — ต้องมีเจตนาชัดเจนเสมอ
+      #    DB ของ CI ทิ้งได้ · deployment จริงไม่ตั้งตัวนี้ สคริปต์จึงปฏิเสธเองที่นั่น
+      CONFORMANCE_ALLOW_DESTRUCTIVE: "1"
       PSTACK_DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgresql+asyncpg://care:care@localhost:5432/care_test' || 'sqlite+aiosqlite:///./test_care.db' }}
 
     steps:

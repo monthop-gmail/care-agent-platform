@@ -11,9 +11,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
+from core.clock import FakeClock
+from core.tenancy import Principal
 
-from care_addons.ap_tenancy.clock import FakeClock
-from care_addons.ap_tenancy.services import Principal
 from care_addons.care_activity import services as activities
 from care_addons.care_home import services as home
 from care_addons.care_inventory import services as inventory

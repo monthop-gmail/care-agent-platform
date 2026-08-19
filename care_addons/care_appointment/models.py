@@ -8,11 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from core.clock import now
 from core.db import Base
 from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from care_addons.ap_tenancy.clock import now
 
 STATUSES = ["scheduled", "preparing", "ready", "completed", "missed", "cancelled"]
 

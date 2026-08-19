@@ -2,7 +2,7 @@
     "name": "care_orientation",
     "version": "0.1.0",
     "depends": [
-        "ap_tenancy",
+        "tenancy",
         "ap_audit",
         "ap_policy",
         "care_patient",

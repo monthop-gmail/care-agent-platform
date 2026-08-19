@@ -32,22 +32,23 @@ ROUTINES = [
 
 
 async def main() -> None:
+    from addons.tenancy import services as kernel_tenancy
     from core.db import dispose_engine, get_sessionmaker
-    from core.tenancy import bind_tenant
+    from core.tenancy import Principal, TenantScope, bind_tenant
 
-    from care_addons.ap_tenancy import services as tenancy
+    from care_addons.ap_consent import services as consent
     from care_addons.care_journal import services as journal
     from care_addons.care_medication import services as meds
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
 
-    scope = tenancy.TenantScope(
+    scope = TenantScope(
         tenant_id=TENANT,
-        principal=tenancy.Principal(type="human", id=ADMIN, display_name="ผู้ดูแลระบบ"),
+        principal=Principal(type="human", id=ADMIN, display_name="ผู้ดูแลระบบ"),
     )
 
     async with get_sessionmaker()() as session:
-        await tenancy.create_tenant(session, TENANT, "ครอบครัวตัวอย่าง")
+        await kernel_tenancy.create_tenant(session, TENANT, "ครอบครัวตัวอย่าง")
         await bind_tenant(session, TENANT)   # RLS ของตารางโดเมน (care-agent-platform#4)
         patient = await patients.create_patient(
             session,
@@ -64,15 +65,15 @@ async def main() -> None:
             quiet_hours=("21:30", "06:00"),
         )
         for grantee in (ADMIN, "care-orchestrator"):
-            await tenancy.grant_consent(
+            await consent.grant_consent(
                 session,
                 scope,
                 subject_id=patient.patient_id,
-                grantee=tenancy.Principal(
+                grantee=Principal(
                     type="service" if grantee == "care-orchestrator" else "human", id=grantee
                 ),
                 scopes=["care.manage"],
-                granted_by=tenancy.Principal(type="human", id=ADMIN),
+                granted_by=Principal(type="human", id=ADMIN),
             )
 
         daughter = await patients.add_caregiver(
@@ -81,13 +82,13 @@ async def main() -> None:
         await patients.assign_to_care_team(
             session, scope, patient_id=patient.patient_id, caregiver_id=daughter.caregiver_id
         )
-        await tenancy.grant_consent(
+        await consent.grant_consent(
             session,
             scope,
             subject_id=patient.patient_id,
-            grantee=tenancy.Principal(type="human", id="user-2"),
+            grantee=Principal(type="human", id="user-2"),
             scopes=["routine.read", "meal.read", "medication.read"],
-            granted_by=tenancy.Principal(type="human", id=ADMIN),
+            granted_by=Principal(type="human", id=ADMIN),
         )
 
         for kind, label, at, severity in ROUTINES:
@@ -115,7 +116,7 @@ async def main() -> None:
             session,
             scope,
             proposed.version_id,
-            confirmed_by=tenancy.Principal(type="human", id="user-2", display_name="คุณลูกสาว"),
+            confirmed_by=Principal(type="human", id="user-2", display_name="คุณลูกสาว"),
         )
 
         await journal.record(

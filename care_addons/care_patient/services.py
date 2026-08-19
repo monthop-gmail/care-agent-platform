@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
+from core.tenancy import TenantScope, assert_same_tenant, new_id, scoped, validate_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
+from care_addons.ap_consent.services import require_consent
 from care_addons.ap_policy.services import care_action
-from care_addons.ap_tenancy.ids import new_id, validate_id
-from care_addons.ap_tenancy.services import (
-    TenantScope,
-    assert_same_tenant,
-    require_consent,
-    scoped,
-)
 from care_addons.care_patient.models import (
     DEFAULT_CARE_PROFILE,
     CareCaregiver,

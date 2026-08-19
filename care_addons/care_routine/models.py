@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from core.clock import now
 from core.db import Base
 from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
-
-from care_addons.ap_tenancy.clock import now
 
 KINDS = ["wake", "meal", "medication", "activity", "hygiene", "rest", "sleep", "hydration", "custom"]
 
