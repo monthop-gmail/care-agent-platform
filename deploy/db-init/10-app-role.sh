@@ -15,12 +15,15 @@
 #    "ย้าย deployment เดิมมาใช้ role ที่ไม่ใช่ superuser"
 set -e
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-SQL
-	CREATE ROLE "$APP_DB_USER" LOGIN PASSWORD '$APP_DB_PASSWORD'
+# ส่งค่าเข้า psql เป็นตัวแปร แล้วให้ psql quote ให้ (:"ident" กับ :'literal')
+# ไม่ประกอบ SQL ด้วยการแทนค่าใน shell — รหัสผ่านที่มี ' หรือ " จะได้ไม่ทำให้สคริปต์พังหรือเพี้ยน
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+    -v approle="$APP_DB_USER" -v apppass="$APP_DB_PASSWORD" -v appdb="$POSTGRES_DB" <<-'SQL'
+	CREATE ROLE :"approle" LOGIN PASSWORD :'apppass'
 	    NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
-	ALTER DATABASE "$POSTGRES_DB" OWNER TO "$APP_DB_USER";
-	ALTER SCHEMA public OWNER TO "$APP_DB_USER";
-	GRANT ALL ON SCHEMA public TO "$APP_DB_USER";
+	ALTER DATABASE :"appdb" OWNER TO :"approle";
+	ALTER SCHEMA public OWNER TO :"approle";
+	GRANT ALL ON SCHEMA public TO :"approle";
 SQL
 
 echo "สร้าง role '$APP_DB_USER' (NOSUPERUSER NOBYPASSRLS) และโอน ownership ของ $POSTGRES_DB แล้ว"

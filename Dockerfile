@@ -25,5 +25,9 @@ COPY care_addons /app/care_addons
 COPY policies /app/policies
 COPY profiles /app/profiles
 
+# conformance เข้า image ด้วย เพราะ db_role_check ต้องรันจาก "ในเครือข่ายเดียวกับ DB"
+# ซึ่ง compose ไม่ได้ expose port ของ db ออกนอก — ผู้ดูแลจึงรันจาก checkout บนเครื่องตัวเองไม่ได้
+COPY conformance /app/conformance
+
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
