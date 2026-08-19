@@ -100,8 +100,14 @@ M6 ── Multi-organization (A+E)
 2. ✅ ~~Alembic migration ต่อ addon~~ — เสร็จ 2026-08-18, ทุกโมดูลที่มีตารางมี migration
    ของตัวเองแล้ว และ `conformance/migration_check.py` บังคับใน CI ว่าแก้ models แล้วต้องมี revision
 3. ✅ ~~ทดสอบบน Postgres จริงใน CI~~ — เสร็จ 2026-08-18, CI เป็น matrix `sqlite` + `postgres`
-4. 🟡 ผูก `line_oa` ของ pstack เป็นช่องทางจริงของผู้ป่วย (ตอนนี้ notification ลง DB อย่างเดียว)
-5. 🟡 ตั้ง ARQ worker ให้เรียก `care_tick` เป็นระยะใน docker-compose (job เขียนไว้แล้วที่ `care_escalation/jobs.py`)
+4. ✅ ~~ผูก `line_oa` เป็นช่องทางจริงของผู้ป่วย~~ — เสร็จ 2026-08-18 ที่ `care_line`
+   (M4) · `care_line/services.py` ส่งออกผ่าน `line_client.respond()` จริงแล้ว
+5. ✅ ~~ตั้ง ARQ worker ให้เรียก `care_tick` เป็นระยะ~~ — เสร็จ 2026-08-18,
+   `care_tick` เป็น `@periodic_job(minute=set(range(60)))` และ service `worker` ใน compose
+   รัน `python -m arq core.worker.WorkerSettings`
+6. 🔴 **adopt `tenancy` ของ kernel** ([pstack#9](https://github.com/willpower-institute/pstack/pull/9)
+   รอเรา adopt ก่อนเขา tag v0.3.0) — แผนผ่า `ap_tenancy` อยู่ที่ [#1](https://github.com/monthop-gmail/care-agent-platform/issues/1)
+   · ข้อ 1 (role ที่ไม่ใช่ superuser) แยกเป็น PR ต่างหากเพราะต้องเสร็จก่อน adopt
 
 ## ของที่รอฝั่ง pstack
 
