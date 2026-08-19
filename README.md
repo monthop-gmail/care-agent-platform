@@ -125,6 +125,7 @@ export PSTACK_ADDONS_PATHS=../pstack/addons,care_addons
 .venv/bin/python conformance/drift_check.py      # contract ของเรายัง $ref ตรงกับ agent-platform
 .venv/bin/python conformance/payload_check.py    # payload จริงที่ระบบผลิต conform contract จริง
 .venv/bin/python conformance/migration_check.py  # migration ยังตรงกับ models
+.venv/bin/python conformance/rls_check.py        # RLS กันข้าม tenant ได้จริง (Postgres)
 ```
 
 เทสบน Postgres แบบเดียวกับ CI และ production:
@@ -214,6 +215,22 @@ repo นี้ประกาศตัวเป็น consumer ผ่าน [`pl
 
 > ต่างกันตรงนี้: `drift_check` ตอบว่า *contract ของเรา* ยังอ้างอิงถูกที่ ·
 > `payload_check` ตอบว่า *ระบบของเรา* ทำตาม contract จริง — ข้อหลังคือข้อที่ ADR-0006 นับ
+
+## Tenant isolation — สองด่าน
+
+| ด่าน | คืออะไร | พังแล้วเป็นยังไง |
+|---|---|---|
+| `scoped()` (app) | ทุก query ที่อ่านข้อมูลของ tenant ต้องผ่าน — เป็นด่านที่ตั้งใจ | ลืมแล้วเห็นข้ามได้ ถ้าไม่มีด่านสอง |
+| **RLS (DB)** | policy ของ Postgres กรองตาม GUC `pstack.tenant_id` | ลืมตั้ง scope = **เห็น 0 แถว** (deny by default) |
+
+🔒 **ทุก path ที่เปิด session เองต้อง `bind_tenant(session, tenant_id)`** — HTTP ไม่ต้องทำเอง
+เพราะ `get_scope` ของ kernel ตั้งให้แล้ว · GUC มีอายุแค่ใน transaction ดังนั้น
+[`care_addons/tenant_session.py`](care_addons/tenant_session.py) ผูก tenant ไว้กับ session
+แล้วตั้งใหม่ให้อัตโนมัติทุก transaction — ไม่งั้นโค้ดที่ commit ระหว่างทางจะเห็น 0 แถวเงียบ ๆ
+
+ตารางที่ **ไม่เปิด RLS โดยตั้งใจ**: `care_line_binding` · `care_line_pairing_code` —
+เป็น control plane ของช่องทางที่ต้องอ่านให้ได้ก่อนถึงจะรู้ว่า LINE user คนนี้เป็นของ tenant ไหน
+(เหตุผลเดียวกับที่ kernel ไม่เปิด RLS บน `tenant`/`tenant_member`)
 
 ## หลักการที่บังคับใช้ในโค้ด ไม่ใช่แค่เขียนไว้
 

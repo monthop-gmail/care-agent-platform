@@ -126,6 +126,17 @@ def system_scope(tenant_id: str):
     )
 
 
+async def use_tenant(session, tenant_id: str) -> None:
+    """ตั้ง GUC ของ RLS ให้ session ในเทส
+
+    บน Postgres ตารางโดเมนเปิด RLS ไว้ (care-agent-platform#4) — ไม่ตั้ง GUC = เห็น 0 แถว
+    บน sqlite เป็น no-op · เทสที่ใช้หลาย tenant ต้องเรียกสลับเองก่อนแตะข้อมูลของแต่ละ tenant
+    """
+    from care_addons.tenant_session import bind_tenant
+
+    await bind_tenant(session, tenant_id)
+
+
 @pytest_asyncio.fixture
 async def tenant(session):
     """tenant + membership + consent ครบสำหรับเทสหนึ่งตัว"""
@@ -134,6 +145,7 @@ async def tenant(session):
     tenant_id = f"t-{uuid.uuid4().hex[:8]}"
     await tenancy.create_tenant(session, tenant_id, "Test Family")
     await session.commit()
+    await use_tenant(session, tenant_id)   # เทสเกือบทั้งหมดใช้ tenant เดียว
     return tenant_id
 
 
@@ -153,6 +165,7 @@ async def setup_patient(
     """
     from care_addons.care_patient import services as patients
 
+    await use_tenant(session, tenant_id)   # เผื่อเทสสลับ tenant มาก่อนหน้า
     admin = scope_for(tenant_id, "user-1")
     patient = await patients.create_patient(
         session,
