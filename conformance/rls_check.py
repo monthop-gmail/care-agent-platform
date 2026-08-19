@@ -37,7 +37,7 @@ os.environ.setdefault("PSTACK_SECRET_KEY", "rls-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"
-    "care_routine,care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_orchestrator",
+    "care_routine,care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_orchestrator",
 )
 
 # ตารางข้อมูลโดเมนที่ต้องมี RLS — เพิ่มตารางใหม่ที่มี tenant_id ต้องมาเพิ่มที่นี่ด้วย
@@ -58,6 +58,11 @@ PROTECTED = [
     "care_appointment",
     "care_preparation_step",
     "care_careplan_task",
+    "care_activity",
+    "care_activity_step",
+    "care_inventory_item",
+    "care_home_item",
+    "care_safety_event",
 ]
 
 # ตารางที่ **ตั้งใจไม่เปิด RLS** — control plane ที่ต้องอ่านได้ก่อนจะรู้ว่าเป็น tenant ไหน

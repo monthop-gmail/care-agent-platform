@@ -278,3 +278,120 @@ def test_careplan_over_http(client, care):
     )
     assert rejected.status_code == 422
     assert "activate_task" in rejected.json()["detail"]
+
+
+def test_daily_living_over_http(client, care):
+    """ของที่บ้าน + ของใช้ประจำตัว — คำตอบเป็นข้อมูล ไม่ใช่คำสั่ง"""
+    headers, patient_id = care
+
+    added = client.post(
+        "/api/care/inventory",
+        headers=headers,
+        json={
+            "patient_id": patient_id,
+            "name": "นมกล่อง",
+            "category": "drink",
+            "quantity": 6,
+            "unit": "กล่อง",
+            "location": "ตู้เย็นชั้นบน",
+        },
+    )
+    assert added.status_code == 201, added.text
+    assert added.json()["expires_on"] is None      # ไม่รู้ = ไม่เดา
+
+    check = client.get(
+        f"/api/care/inventory/check?patient_id={patient_id}&name=นมกล่อง", headers=headers
+    ).json()
+    assert len(check["already_at_home"]) == 1
+    assert "จะซื้อเพิ่มก็ได้" in check["message"]
+    assert "blocked" not in check and "forbidden" not in check
+
+    item = client.post(
+        "/api/care/home",
+        headers=headers,
+        json={
+            "patient_id": patient_id,
+            "kind": "keys",
+            "label": "กุญแจบ้าน",
+            "home_location": "ตะกร้าข้างประตู",
+        },
+    )
+    assert item.status_code == 201, item.text
+
+    where = client.get(
+        f"/api/care/home/where?patient_id={patient_id}&label=กุญแจ", headers=headers
+    ).json()
+    assert where["found"] is True
+    assert "ตะกร้าข้างประตู" in where["message"]
+
+    unknown = client.get(
+        f"/api/care/home/where?patient_id={patient_id}&label=แว่นตา", headers=headers
+    ).json()
+    assert unknown["found"] is False
+
+
+def test_activity_and_safety_over_http(client, care):
+    headers, patient_id = care
+
+    started = client.post(
+        "/api/care/activities",
+        headers=headers,
+        json={"patient_id": patient_id, "activity_type": "laundry", "label": "ซักผ้า"},
+    )
+    assert started.status_code == 201, started.text
+    body = started.json()
+    assert len(body["steps"]) == 4
+    assert body["steps"][0]["state"] == "in_progress"
+
+    done = client.post(
+        f"/api/care/activities/steps/{body['steps'][0]['step_id']}/complete", headers=headers
+    )
+    assert done.status_code == 200
+    assert done.json()["steps"][1]["state"] == "waiting"
+
+    signalled = client.post(
+        f"/api/care/activities/{body['activity_id']}/signal",
+        headers=headers,
+        json={"event": "washing_machine.finished", "source_system": "smart-home-hub"},
+    )
+    assert signalled.status_code == 200
+    after = signalled.json()
+    assert after["state"] != "completed"            # 🔒 เครื่องเสร็จ ≠ งานเสร็จ
+    assert after["steps"][2]["state"] == "in_progress"
+
+    # safety ยังไม่ได้เปิดใน care_profile ของผู้ป่วยรายนี้
+    blocked = client.post(
+        "/api/care/safety/signals",
+        headers=headers,
+        json={
+            "patient_id": patient_id,
+            "kind": "door_left_open",
+            "source": {"kind": "door_sensor", "system": "smart-home-hub"},
+        },
+    )
+    assert blocked.status_code == 422
+    assert "care_profile.safety" in blocked.json()["detail"]
+
+    enabled = client.post(
+        f"/api/care/patients/{patient_id}/care-profile", headers=headers, json={"safety": True}
+    )
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["care_profile"]["safety"] is True
+
+    accepted = client.post(
+        "/api/care/safety/signals",
+        headers=headers,
+        json={
+            "patient_id": patient_id,
+            "kind": "door_left_open",
+            "source": {"kind": "door_sensor", "system": "smart-home-hub"},
+            "confidence": 0.9,
+        },
+    )
+    assert accepted.status_code == 201, accepted.text
+    assert accepted.json()["severity"] == "medium"
+
+    listed = client.get(f"/api/care/safety/events?patient_id={patient_id}", headers=headers).json()
+    assert len(listed["open_events"]) == 1
+    # 🔒 รายการว่างไม่ได้แปลว่าปลอดภัย — API ต้องพูดเรื่องนี้เอง
+    assert "ไม่ได้แปลว่าที่เหลือปลอดภัย" in listed["note"]

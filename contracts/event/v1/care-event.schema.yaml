@@ -39,6 +39,11 @@ $defs:
       - care.orientation.delivered
       - care.task.step_completed
       - care.task.stalled
+      - care.inventory.changed
+      - care.inventory.duplicate_suspected
+      - care.home.item_updated
+      - care.safety.detected
+      - care.safety.acknowledged
       - care.deviation.detected
       - care.escalated
       - care.summary.sent

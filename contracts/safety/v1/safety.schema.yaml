@@ -1,0 +1,73 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/safety/v1/safety.schema.yaml
+title: Safety Event
+description: >-
+  สัญญาณความปลอดภัยจากภายนอก — GPS · wearable · door/motion sensor · หรือคนแจ้งเอง
+  🔒 sensor รายงาน **สิ่งที่วัดได้** ไม่ใช่ **สิ่งที่เกิดขึ้นกับผู้ป่วย**
+  "accelerometer เข้าเกณฑ์การล้ม" ≠ "ผู้ป่วยล้มและบาดเจ็บ" — ระบบต้องพูดแบบแรกเสมอ
+
+$defs:
+  EventKind:
+    description: 🔓 ชุดเปิด — เพิ่มชนิดใหม่ได้แบบ additive เมื่อมี sensor ชนิดใหม่
+    enum:
+      - fall_suspected
+      - left_home_unexpectedly
+      - outside_safe_area
+      - not_returned_home
+      - no_response
+      - stove_left_on
+      - door_left_open
+      - long_time_in_bathroom
+      - device_offline
+      - other
+
+  SourceKind:
+    enum: [gps, wearable, door_sensor, motion_sensor, camera, smart_appliance, phone, manual_report]
+
+  State:
+    enum: [detected, acknowledged, resolved, dismissed]
+
+type: object
+required: [safety_event_id, tenant_id, patient_id, kind, source, observed_at, state]
+properties:
+  safety_event_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  kind: { $ref: '#/$defs/EventKind' }
+  source:
+    type: object
+    required: [kind, system]
+    description: 🔒 ต้องรู้ตลอดไปว่าสัญญาณนี้มาจากไหน — event/v1 ห้ามทำ external ให้กลายเป็น internal
+    properties:
+      kind: { $ref: '#/$defs/SourceKind' }
+      system: { type: string, minLength: 1 }
+      device_id: { type: string }
+  confidence:
+    type: number
+    minimum: 0
+    maximum: 1
+    description: >-
+      ความมั่นใจของ **อุปกรณ์** ไม่ใช่ของระบบเรา · ไม่ส่งมา = ไม่รู้ ห้ามเติมให้
+      สัญญาณที่มั่นใจต่ำกว่าเกณฑ์ต้องบันทึกไว้ แต่ยังไม่ปลุกคนทั้งบ้าน (false alert)
+  observed_at: { type: string, format: date-time }
+  severity:
+    $ref: https://schemas.care-agent-platform.internal/event/v1/care-event.schema.yaml#/$defs/Severity
+  state: { $ref: '#/$defs/State' }
+  acknowledged_by:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+  acknowledged_at: { type: [string, "null"], format: date-time }
+  raw:
+    type: object
+    description: payload ดิบจากอุปกรณ์ — เก็บไว้ให้ตรวจย้อนได้ว่าเราตีความจากอะไร
+
+safety_rules:
+  rules:
+    - "sensor รายงานสิ่งที่วัดได้ ไม่ใช่การวินิจฉัย — ชื่อ kind ต้องเป็น 'ต้องสงสัย' ไม่ใช่ข้อสรุป"
+    - "external event ต้องคง source ไว้ตลอดไป ห้ามแปลงเป็น internal"
+    - "confidence ต่ำกว่าเกณฑ์ → บันทึกไว้แต่ห้าม escalate อัตโนมัติ (กัน false safety alert)"
+    - "สัญญาณเดิมซ้ำในหน้าต่างเวลาเดียวกัน = เหตุการณ์เดียว ห้ามปลุกคนซ้ำ (กัน notification storm)"
+    - "ไม่มีสัญญาณ ≠ ปลอดภัย — อุปกรณ์เงียบเพราะแบตหมดก็ได้ ห้ามรายงานว่า 'ทุกอย่างปกติ'"
+    - "critical เท่านั้นที่ข้าม quiet hours ได้ และต้องแจ้งผู้ป่วยย้อนหลังเสมอ"

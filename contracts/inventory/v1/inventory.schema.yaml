@@ -1,0 +1,47 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/inventory/v1/inventory.schema.yaml
+title: Household Inventory Item
+description: >-
+  ของกิน/ของใช้ที่บ้าน + วันหมดอายุ — ตอบคำถาม "ซื้ออีกไหม" และ "อันไหนใกล้หมดอายุ"
+  🔒 **เตือนว่ามีอยู่แล้ว ไม่ใช่ห้ามซื้อ** — ผู้ป่วยยังเป็นเจ้าของการตัดสินใจของตัวเอง
+
+$defs:
+  Category:
+    enum: [food, drink, medicine_supply, hygiene, cleaning, household, other]
+
+  Status:
+    description: >-
+      🔒 `expired` ไม่ใช่สถานะที่เก็บ — คำนวณจาก `expires_on` เทียบกับวันนี้เท่านั้น
+      (เหตุผลเดียวกับที่ `consent/v1` ห้ามเก็บ `status` ซ้ำกับ `revoked_at`)
+    enum: [in_stock, consumed, discarded]
+
+type: object
+required: [item_id, tenant_id, patient_id, name, category, status, recorded_by]
+properties:
+  item_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  name: { type: string, minLength: 1 }
+  category: { $ref: '#/$defs/Category' }
+  quantity: { type: number, minimum: 0 }
+  unit: { type: string, description: "กล่อง · ขวด · แผง — ตามที่คนบันทึกเรียก" }
+  location: { type: string, description: "ตู้เย็น · ตู้ยา · ใต้อ่าง — ที่จริงในบ้าน ไม่ใช่หมวดหมู่" }
+  expires_on:
+    type: [string, "null"]
+    format: date
+    description: null = ไม่มีวันหมดอายุ หรือ **ยังไม่รู้** — ทั้งสองอย่างห้ามเดาให้
+  opened_on: { type: [string, "null"], format: date }
+  status: { $ref: '#/$defs/Status' }
+  recorded_by:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+  recorded_at: { type: string, format: date-time }
+
+inventory_rules:
+  rules:
+    - "ของที่ไม่รู้วันหมดอายุ ห้ามเดาวันให้ — ตอบว่าไม่รู้"
+    - "เตือนว่ามีอยู่แล้วได้ ห้ามห้ามซื้อ — ระบบเสนอ ผู้ป่วย/ผู้ดูแลตัดสิน"
+    - "ของหมดอายุเป็นข้อเท็จจริงจากวันที่ ไม่ใช่การประเมินว่ากินได้/ไม่ได้"
+    - "ห้ามสรุปว่าผู้ป่วยความจำแย่ลงจากการซื้อซ้ำ — รายงานเป็นจำนวนครั้งที่ซ้ำเท่านั้น"

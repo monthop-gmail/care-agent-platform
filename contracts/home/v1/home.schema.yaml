@@ -1,0 +1,49 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/home/v1/home.schema.yaml
+title: Personal Item
+description: >-
+  ของใช้ประจำตัวและเสื้อผ้า — cognitive offloading: ทำให้ **ไม่ต้องจำ** ดีกว่าช่วยจำ
+  "กุญแจอยู่ไหน" · "ชุดนี้ใส่แล้วหรือยัง" · "พรุ่งนี้ใส่ชุดไหน"
+
+  🔒 **AI ห้ามเดาสถานะเอง** — ไม่วิเคราะห์ภาพแล้วบอกว่าเสื้อตัวนี้สะอาด
+  สถานะเปลี่ยนได้จากการยืนยันของคนเท่านั้น · ไม่แน่ใจ → `unknown` แล้วเสนอ workflow ที่ปลอดภัย
+
+$defs:
+  ItemKind:
+    enum: [clothing, keys, wallet, glasses, phone, document, hearing_aid, cane, other]
+
+  ItemState:
+    description: >-
+      🔒 `unknown` เป็นค่าที่ถูกต้อง ไม่ใช่ข้อมูลขาด — "จำไม่ได้ว่าใส่แล้วหรือยัง" คือคำตอบจริง
+      ที่ระบบต้องรับได้ และต้องนำไปสู่ workflow ที่ปลอดภัย ไม่ใช่การเดา
+    enum: [ready, used, in_laundry, unknown, lost]
+
+type: object
+required: [item_id, tenant_id, patient_id, kind, label, state]
+properties:
+  item_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  patient_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  kind: { $ref: '#/$defs/ItemKind' }
+  label: { type: string, minLength: 1 }
+  state: { $ref: '#/$defs/ItemState' }
+  home_location:
+    type: string
+    description: ที่อยู่ประจำที่ตกลงกันไว้ — "ตะกร้าข้างประตู" ไม่ใช่พิกัด
+  last_seen_at: { type: [string, "null"], format: date-time }
+  last_confirmed_by:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+  set_aside_for:
+    type: [string, "null"]
+    format: date
+    description: เตรียมไว้สำหรับวันไหน (เช่น ชุดสำหรับวันนัดหมอ)
+
+home_rules:
+  rules:
+    - "AI ห้ามเดาสถานะจากภาพหรือจากพฤติกรรม — เปลี่ยนสถานะได้จากการยืนยันของคนเท่านั้น"
+    - "ไม่แน่ใจ = unknown แล้วเสนอ workflow ที่ปลอดภัย (ใส่ตะกร้าผ้าใช้แล้ว) ห้ามบอกว่าสะอาด"
+    - "ตอบ 'ของอยู่ไหน' จากบันทึกล่าสุดเท่านั้น ไม่มีบันทึก = บอกว่าไม่มีข้อมูล"
+    - "ห้ามใช้จำนวนของที่หายเป็นตัวชี้วัดอาการของผู้ป่วย"

@@ -39,7 +39,7 @@ os.environ.setdefault("PSTACK_SECRET_KEY", "payload-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,care_routine,"
-    "care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_orchestrator",
+    "care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_orchestrator",
 )
 
 # schema ที่ต้องมีใน registry เพื่อ resolve $ref ระหว่างไฟล์
@@ -88,13 +88,37 @@ def build_validator(schemas: dict[str, dict], schema: dict):
     from referencing import Registry, Resource
 
     registry = Registry().with_resources(
-        [(uri, Resource.from_contents(doc)) for uri, doc in schemas.items()]
+        [
+            (uri, Resource.from_contents(doc))
+            for uri, doc in {**schemas, **local_schemas()}.items()
+        ]
     )
     return Draft202012Validator(schema, registry=registry)
 
 
 # key ที่เราเติมไว้ให้คนอ่าน แต่ไม่ใช่คำของ JSON Schema — ต้องตัดก่อน validate
-NON_SCHEMA_KEYS = ("extends", "care_rules", "careplan_rules", "description", "title")
+NON_SCHEMA_KEYS = (
+    "extends", "description", "title",
+    "care_rules", "careplan_rules", "activity_rules",
+    "inventory_rules", "home_rules", "safety_rules",
+)
+
+
+# contract ของโดเมนเราที่ตัวอื่นอ้างถึงด้วย $ref — ต้องอยู่ใน registry ตอน validate
+# (safety/v1 อ้าง Severity ของ care-event · activity/v1 อ้าง TaskState ของ escalation)
+LOCAL_SCHEMA_FILES = [
+    ("event", "v1", "care-event.schema.yaml"),
+    ("escalation", "v1", "escalation.schema.yaml"),
+    ("activity", "v1", "activity.schema.yaml"),
+    ("inventory", "v1", "inventory.schema.yaml"),
+    ("home", "v1", "home.schema.yaml"),
+    ("safety", "v1", "safety.schema.yaml"),
+    ("careplan", "v1", "careplan.schema.yaml"),
+]
+
+
+def local_schemas() -> dict[str, dict]:
+    return {doc["$id"]: doc for doc in (local_schema(*parts) for parts in LOCAL_SCHEMA_FILES)}
 
 
 def local_schema(*parts: str) -> dict:
@@ -131,8 +155,15 @@ async def run_scenario() -> tuple[list, list, list]:
     from care_addons.ap_tenancy import services as tenancy
     from care_addons.ap_tenancy.clock import FakeClock
     from care_addons.care_appointment import services as appointments
+    from care_addons.care_activity import services as activities
     from care_addons.care_careplan import services as careplan
     from care_addons.care_careplan.models import CareCarePlanTask
+    from care_addons.care_home import services as home
+    from care_addons.care_home.models import CareHomeItem
+    from care_addons.care_inventory import services as inventory
+    from care_addons.care_inventory.models import CareInventoryItem
+    from care_addons.care_safety import services as safety
+    from care_addons.care_safety.models import CareSafetyEvent
     from care_addons.care_escalation import services as jobs
     from care_addons.care_journal import services as journal
     from care_addons.care_medication import services as medications
@@ -181,6 +212,7 @@ async def run_scenario() -> tuple[list, list, list]:
                 care_profile={
                     "routine": True, "medication": True, "appointment": True,
                     "memory_assistance": True, "caregiver_escalation": True,
+                    "safety": True,
                 },
                 channels=["line"],
             )
@@ -279,6 +311,33 @@ async def run_scenario() -> tuple[list, list, list]:
                 activated_by=tenancy.Principal(type="human", id="user-2", display_name="ลูกสาว"),
             )
 
+            # Daily living: งานหลายขั้นตอน · ของที่บ้าน · ของใช้ประจำตัว
+            laundry = await activities.start_activity(
+                session, admin, patient_id=patient.patient_id,
+                activity_type="laundry", label="ซักผ้า",
+            )
+            await inventory.add_item(
+                session, admin, patient_id=patient.patient_id, name="นมกล่อง",
+                category="drink", quantity=6, unit="กล่อง", location="ตู้เย็นชั้นบน",
+            )
+            await inventory.check_before_buying(
+                session, admin, patient.patient_id, name="นมกล่อง",
+            )
+            shirt = await home.add_item(
+                session, admin, patient_id=patient.patient_id, kind="clothing",
+                label="เสื้อเชิ้ตลายฟ้า", home_location="ตู้เสื้อผ้าชั้นบน", state="ready",
+            )
+            await home.set_state(
+                session, admin, shirt.item_id, state="used",
+                confirmed_by=tenancy.Principal(type="human", id="user-1"),
+            )
+            # สัญญาณจากอุปกรณ์จริง — external event ที่ต้องคง source ไว้ตลอดไป
+            await safety.report_signal(
+                session, admin, patient_id=patient.patient_id, kind="door_left_open",
+                source={"kind": "door_sensor", "system": "smart-home-hub", "device_id": "d-01"},
+                confidence=0.9,
+            )
+
             appointment = await appointments.create_appointment(
                 session, admin, patient_id=patient.patient_id,
                 starts_at=clock.set("2026-08-19T00:30:00+00:00") + timedelta(days=1),
@@ -333,6 +392,21 @@ async def run_scenario() -> tuple[list, list, list]:
             )
             approval_rows = list((await session.execute(select(ApApproval))).scalars())
             plan_tasks = list((await session.execute(select(CareCarePlanTask))).scalars())
+            domain_rows = {
+                "inventory/v1": [
+                    inventory.as_inventory_item(i)
+                    for i in (await session.execute(select(CareInventoryItem))).scalars()
+                ],
+                "home/v1": [
+                    home.as_home_item(i)
+                    for i in (await session.execute(select(CareHomeItem))).scalars()
+                ],
+                "safety/v1": [
+                    safety.as_safety_event(e)
+                    for e in (await session.execute(select(CareSafetyEvent))).scalars()
+                ],
+                "activity/v1": [await activities.as_activity(session, system, laundry)],
+            }
 
     decisions = [
         evaluate(capability)
@@ -344,7 +418,7 @@ async def run_scenario() -> tuple[list, list, list]:
     await dispose_engine()
     if url.startswith("sqlite"):
         CHECK_DB.unlink(missing_ok=True)
-    return events, decisions, grants, approval_rows, plan_tasks
+    return events, decisions, grants, approval_rows, plan_tasks, domain_rows
 
 
 def main() -> int:
@@ -359,7 +433,7 @@ def main() -> int:
     from care_addons.ap_consent.services import as_consent_grant
     from care_addons.care_careplan.services import as_careplan_task
 
-    events, decisions, grants, approvals_made, plan_tasks = asyncio.run(run_scenario())
+    events, decisions, grants, approvals_made, plan_tasks, domain_rows = asyncio.run(run_scenario())
     if not events:
         print("✗ scenario ไม่ได้ผลิต event เลย — เช็คว่า scenario ยังทำงานอยู่")
         return 1
@@ -422,6 +496,21 @@ def main() -> int:
         for error in careplan_validator.iter_errors(payload):
             failures.append(f"careplan/v1 · {task.task_id}: {error.json_path} — {error.message}")
 
+    # contract ของโดเมนเราเอง — validate แถวจริงที่ scenario ผลิต ไม่ใช่แค่ตรวจ $ref
+    DOMAIN_SCHEMAS = {
+        "inventory/v1": ("inventory", "v1", "inventory.schema.yaml"),
+        "home/v1": ("home", "v1", "home.schema.yaml"),
+        "safety/v1": ("safety", "v1", "safety.schema.yaml"),
+        "activity/v1": ("activity", "v1", "activity.schema.yaml"),
+    }
+    domain_count = 0
+    for contract_id, parts in DOMAIN_SCHEMAS.items():
+        validator = build_validator(schemas, local_schema(*parts))
+        for payload in domain_rows.get(contract_id, []):
+            domain_count += 1
+            for error in validator.iter_errors(payload):
+                failures.append(f"{contract_id}: {error.json_path} — {error.message}")
+
     for decision in decisions:
         payload = {
             **decision.as_policy_result(),
@@ -441,7 +530,8 @@ def main() -> int:
     print(
         f"✓ payload conformance ผ่าน — {len(events)} audit event (care event {care_count}) "
         f"+ {len(grants)} consent grant + {len(approvals_made)} approval "
-        f"+ {len(plan_tasks)} careplan task + {len(decisions)} policy decision "
+        f"+ {len(plan_tasks)} careplan task + {domain_count} domain record "
+        f"+ {len(decisions)} policy decision "
         f"validate กับ agent-platform @ {pinned['commit'][:8]}"
     )
     return 0
