@@ -1,0 +1,41 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/organization/v1/organization.schema.yaml
+title: Care Organization
+description: >-
+  ผู้ให้บริการภายนอกที่ครอบครัวนี้ใช้จริง — คลินิก · โรงพยาบาล · ร้านยา · nursing home
+  🔒 **ไม่ใช่ tenant** ([ADR-0010](../../../decisions/0010-organizations-are-not-tenants.md))
+  องค์กรไม่มีข้อมูลผู้ป่วยชุดของตัวเอง และเขียนอะไรลงระบบโดยตรงไม่ได้
+
+$defs:
+  OrgKind:
+    enum: [clinic, hospital, pharmacy, nursing_home, home_care, laboratory, other]
+
+  MemberRole:
+    description: บทบาทของคนในองค์กร — ใช้อธิบายว่าใคร ไม่ใช่ใช้ตัดสินสิทธิ์
+    enum: [doctor, nurse, pharmacist, therapist, coordinator, other]
+
+type: object
+required: [organization_id, tenant_id, name, kind]
+properties:
+  organization_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+    description: >-
+      🔒 tenant-scoped โดยตั้งใจ — องค์กรที่ครอบครัวนี้บันทึกไว้ ไม่ใช่ทะเบียนกลาง
+      ทะเบียนกลางจะเปิดช่องให้ครอบครัวหนึ่งรู้ว่าครอบครัวอื่นไปหาหมอที่ไหน
+  name: { type: string, minLength: 1 }
+  kind: { $ref: '#/$defs/OrgKind' }
+  external_ref:
+    type: string
+    description: รหัสขององค์กรในระบบต้นทาง (ถ้ามี) — ใช้จับคู่ตอนเชื่อมระบบจริง
+  contact: { type: string }
+  note: { type: string }
+  created_at: { type: string, format: date-time }
+
+organization_rules:
+  rules:
+    - "องค์กรไม่ใช่ tenant — ไม่มีข้อมูลผู้ป่วยชุดที่สอง (ADR-0010 ข้อ 1)"
+    - "consent ให้แก่บุคคล ไม่ให้แก่องค์กร — พนักงานใหม่ต้องไม่ได้สิทธิ์เองโดยครอบครัวไม่รู้"
+    - "สิทธิ์จริง = consent ที่ยังใช้ได้ AND ยังเป็นสมาชิกขององค์กรอยู่"
+    - "องค์กรเขียนอะไรลงระบบโดยตรงไม่ได้ — ทุกอย่างที่มาจากข้างนอกเป็นข้อเสนอที่ต้องมีคนอนุมัติ"

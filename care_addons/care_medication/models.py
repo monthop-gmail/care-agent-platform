@@ -57,6 +57,11 @@ class CareMedicationVersion(Base):
     status: Mapped[str] = mapped_column(String(24), default="proposed")
     instruction_source: Mapped[str] = mapped_column(String(32))
     prescribed_by: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 🔒 provenance ของคำสั่งที่มาจากข้างนอก (ADR-0010 ข้อ 7)
+    #    องค์กรไหน · เอกสารใบไหน — เก็บตลอดอายุของ record เพราะเวลาโต้แย้งกันภายหลัง
+    #    ต้องกลับไปดูได้ว่า "ใบนี้มาจากไหน" ไม่ใช่แค่ "ใครพิมพ์เข้าระบบ"
+    source_organization_id: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    source_document_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     superseded_by: Mapped[str | None] = mapped_column(String(63), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)

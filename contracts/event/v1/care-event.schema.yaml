@@ -44,6 +44,10 @@ $defs:
       - care.home.item_updated
       - care.safety.detected
       - care.safety.acknowledged
+      # 🔒 ไม่มี care.organization.changed โดยตั้งใจ — ทะเบียนองค์กรเป็นของครอบครัว
+      #    ไม่ใช่ของผู้ป่วยคนใดคนหนึ่ง และ care event ทุกตัวต้องมี patient_id
+      #    (การเปลี่ยนทะเบียนยังมี audit event ธรรมดาบันทึกไว้ครบเหมือนเดิม)
+      - care.organization.access_granted
       - care.deviation.detected
       - care.escalated
       - care.summary.sent

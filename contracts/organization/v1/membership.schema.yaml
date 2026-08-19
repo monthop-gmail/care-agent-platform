@@ -1,0 +1,37 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.care-agent-platform.internal/organization/v1/membership.schema.yaml
+title: Organization Membership
+description: >-
+  ใครทำงานอยู่ที่องค์กรไหน — เป็น **เงื่อนไขที่ต้องยังเป็นจริง** ตอนเข้าถึงข้อมูล
+  ไม่ใช่แค่ข้อมูลประกอบ
+
+  🔒 หมอที่ลาออกแล้วต้องเข้าไม่ได้ทันที **แม้ใบ consent จะยังไม่หมดอายุ**
+  เพราะสิ่งที่ครอบครัวยินยอมคือ "หมอในฐานะแพทย์ของโรงพยาบาลนั้น"
+  ไม่ใช่ "คนคนนี้ในฐานะบุคคล" (ADR-0010 ข้อ 4)
+
+type: object
+required: [membership_id, tenant_id, organization_id, principal, role, active]
+properties:
+  membership_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  tenant_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/TenantId
+  organization_id:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Id
+  principal:
+    $ref: https://schemas.agent-platform.internal/identity/v1/identity.schema.yaml#/$defs/Principal
+    description: 🔒 ต้องเป็นคน — องค์กรไม่ได้รับสิทธิ์ในฐานะเครื่อง
+  role:
+    $ref: organization.schema.yaml#/$defs/MemberRole
+  display_name: { type: string }
+  active:
+    type: boolean
+    description: >-
+      false = เข้าถึงข้อมูลไม่ได้ทันที ไม่ต้องรอเพิกถอน consent ทีละใบ
+      · ไม่ลบแถวทิ้งเพราะ audit ต้องตอบได้ว่าใครเคยเข้าถึงได้ในช่วงไหน
+  starts_on: { type: [string, "null"], format: date }
+  ends_on:
+    type: [string, "null"]
+    format: date
+    description: วันสุดท้ายที่ยังเป็นสมาชิก — เลยวันนี้ถือว่าไม่ active แม้ `active` ยังเป็น true
+  ended_reason: { type: [string, "null"] }

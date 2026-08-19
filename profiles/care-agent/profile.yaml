@@ -35,6 +35,8 @@ tools:
     - inventory.item.write
     - home.item.write
     - safety.signal.intake
+    - organization.write              # จดชื่อโรงพยาบาลจากเอกสารได้ — เปิดสิทธิ์ไม่ได้
+    - organization.membership.end     # ตัดสิทธิ์ได้เสมอ — ทางที่ปลอดภัยต้องไม่มีอะไรขวาง
     - caregiver.notify
     - emergency.escalate
   deny:
@@ -45,6 +47,9 @@ tools:
     - careplan.task.activate
     - care.profile.update             # เปิด/ปิดความสามารถของผู้ป่วยเป็นการตัดสินใจของคน
     - clinical.export
+    # 🔒 agent เพิ่มหมอเข้าองค์กรหรือเปิดสิทธิ์ให้ใครไม่ได้ ต่อให้อ่านเจอในเอกสาร
+    - organization.membership.write
+    - organization.access.grant
     # ชื่อที่ต้องไม่มีวันมีอยู่จริงในโค้ด — ถ้าวันหนึ่งมีใครประกาศ capability ชื่อนี้
     # มันจะถูกปฏิเสธตั้งแต่วินาทีแรกโดยไม่ต้องรอให้ใครสังเกตเห็นใน review
     - diagnosis.any

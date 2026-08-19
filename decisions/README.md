@@ -14,6 +14,7 @@
 | [0007](0007-consent-and-data-access.md) | consent เป็นเงื่อนไขการเข้าถึง ไม่ใช่แค่ RBAC | Accepted |
 | [0008](0008-patient-channel-is-deterministic.md) | ช่องทางของผู้ป่วยตอบแบบ deterministic ไม่ผ่าน LLM | Accepted |
 | [0009](0009-approval-waits-forever.md) | คำขออนุมัติรอได้ตลอดกาล — เวลาไม่เคยอนุมัติอะไรให้ | Accepted |
+| [0010](0010-organizations-are-not-tenants.md) | องค์กรภายนอกไม่ใช่ tenant — เข้าถึงผ่าน consent ที่ให้บุคคล | Accepted |
 
 ## กติกา
 

@@ -54,6 +54,14 @@ capabilities:
   # 🔒 การ "รับสัญญาณ" เข้าระบบเป็น low — มันคือการบันทึกสิ่งที่วัดได้ ไม่ใช่การลงมือทำ
   #    สิ่งที่เสี่ยงคือการ **ปลุกคน** ซึ่งใช้ emergency.escalate/caregiver.notify อยู่แล้ว
   safety.signal.intake:         { action_risk: low }
+  organization.write:           { action_risk: medium }   # บันทึกคลินิก/โรงพยาบาลที่ครอบครัวใช้
+  # 🔒 เพิ่มสมาชิกองค์กร = ขยายวงคนที่อาจเข้าถึงข้อมูลผู้ป่วยได้ · ให้สิทธิ์ทางคลินิก
+  #    = เปิดข้อมูลให้คนนอกครอบครัวจริง ๆ · ทั้งคู่ต้องมีคนรับผิดชอบเสมอ (ADR-0010)
+  organization.membership.write: { action_risk: high }
+  # 🔒 การ **ตัด** สิทธิ์ต้องทำได้เสมอและทันที — ถ้าต้องรออนุมัติก่อนถึงจะตัดสิทธิ์หมอที่ลาออกได้
+  #    ระบบจะปลอดภัยน้อยลงเพราะกระบวนการอนุมัติ ซึ่งกลับหัวกลับหางกับเจตนาของ policy
+  organization.membership.end:  { action_risk: low }
+  organization.access.grant:    { action_risk: high }
 
   medication.reminder.send:     { action_risk: low }
   medication.regimen.propose:   { action_risk: medium }

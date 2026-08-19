@@ -31,6 +31,9 @@ from care_addons.care_patient.services import feature_enabled, get_patient
 
 ACTIVE_STATUSES = ("active", "needs_reconciliation")
 
+# instruction_source ที่อ้างว่ามาจากองค์กรภายนอก — ต้องบอกได้ว่าองค์กรไหน
+EXTERNAL_INSTRUCTION_SOURCES = ("pharmacy_label", "hospital_document")
+
 
 class MedicationRuleViolation(PermissionError):
     """กติกาของโดเมนยา — ไม่ใช่ error ธรรมดา ต้องอ่านข้อความให้ครบก่อนแก้"""
@@ -75,6 +78,8 @@ async def propose_version(
     prescribed_by: dict | None = None,
     reason: str | None = None,
     effective_from: datetime | None = None,
+    source_organization_id: str | None = None,
+    source_document_ref: str | None = None,
 ) -> CareMedicationVersion:
     """เสนอคำสั่งใช้ยา — ได้แค่ `proposed` เท่านั้น ต่อให้ผู้เรียกเป็นคน
 
@@ -85,6 +90,13 @@ async def propose_version(
         raise MedicationRuleViolation("care_profile.medication ยังปิดอยู่สำหรับผู้ป่วยรายนี้")
     if instruction_source not in INSTRUCTION_SOURCES:
         raise ValueError(f"instruction_source ไม่รู้จัก: {instruction_source}")
+    # 🔒 คำสั่งที่อ้างว่ามาจากองค์กรภายนอก ต้องบอกได้ว่าองค์กรไหน (ADR-0010 ข้อ 7)
+    #    ไม่งั้น "hospital_document" จะกลายเป็นคำที่ใครพิมพ์ก็ได้เพื่อให้ดูน่าเชื่อถือขึ้น
+    if instruction_source in EXTERNAL_INSTRUCTION_SOURCES and not source_organization_id:
+        raise MedicationRuleViolation(
+            f"instruction_source '{instruction_source}' อ้างว่ามาจากองค์กรภายนอก "
+            f"จึงต้องระบุ source_organization_id ว่าองค์กรไหน"
+        )
 
     version = CareMedicationVersion(
         version_id=new_id("mv"),
@@ -100,6 +112,8 @@ async def propose_version(
         prescribed_by=prescribed_by,
         effective_from=effective_from or now(),
         reason=reason,
+        source_organization_id=source_organization_id,
+        source_document_ref=source_document_ref,
     )
     session.add(version)
     await session.flush()
@@ -119,6 +133,8 @@ async def propose_version(
             "medication_id": version.medication_id,
             "name": name,
             "instruction_source": instruction_source,
+            "source_organization_id": source_organization_id,
+            "source_document_ref": source_document_ref,
         },
     )
 
