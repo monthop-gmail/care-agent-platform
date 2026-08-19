@@ -5,8 +5,10 @@ ADR-0003 กฎ 4 ข้อของ `ap_*` และ ADR-0006 เรื่อ�
 
 from __future__ import annotations
 
+import os
 import pathlib
 import re
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ADDONS = ROOT / "care_addons"
@@ -91,7 +93,8 @@ def test_care_modules_depend_on_the_conformance_layer():
     """ทุก addon โดเมนต้องผ่าน tenancy/audit/policy — ไม่มีข้อยกเว้น (team-plan)"""
     import ast
 
-    required = {"ap_tenancy", "ap_audit", "ap_policy"}
+    # `tenancy` เป็นโมดูลของ kernel ตั้งแต่ pstack v0.3.0 — shim `ap_tenancy` ถูกลบแล้ว (ADR-0003 รอบ 2)
+    required = {"tenancy", "ap_audit", "ap_policy"}
     for module in CARE_MODULES:
         manifest = ast.literal_eval((ADDONS / module / "__manifest__.py").read_text(encoding="utf-8"))
         missing = required - set(manifest.get("depends", []))
@@ -119,7 +122,7 @@ def test_every_declared_action_has_a_risk_in_policy_config():
 
 
 def test_no_direct_datetime_now_in_domain_code():
-    """เวลาต้องมาจาก ap_tenancy.clock เท่านั้น ไม่งั้น scenario test เลื่อนเวลาไม่ได้"""
+    """เวลาต้องมาจาก `core.clock` เท่านั้น ไม่งั้น scenario test เลื่อนเวลาไม่ได้"""
     offenders = []
     for module in AP_MODULES + CARE_MODULES:
         for path in _python_files(module):
@@ -221,3 +224,71 @@ def test_pstack_ref_is_the_same_everywhere():
         refs[f"docker-compose[{index}]"] = value
 
     assert len(set(refs.values())) == 1, f"PSTACK_REF ไม่ตรงกัน: {refs}"
+
+
+def test_profile_allowlist_uses_real_capability_names():
+    """ชื่อใน profile ต้องเป็น capability จริง — ไม่งั้นไฟล์กลายเป็นเอกสารที่ไม่มีผล
+
+    เพดานที่สะกดชื่อผิดคือเพดานที่ไม่มีอยู่ และอันตรายกว่าไม่มีเพดานเลย
+    เพราะคนอ่านไฟล์แล้วเชื่อว่าระบบกันให้อยู่
+
+    `deny` ยกเว้นได้ตั้งใจ — มีชื่อที่ต้องไม่มีวันมีอยู่จริงในโค้ด (diagnosis.any,
+    shell.execute) เป็นกับดักไว้ล่วงหน้า
+    """
+    from care_addons.ap_policy.engine import load_policy
+    from care_addons.ap_policy.profile import load_profile
+
+    known = set(load_policy().capabilities)
+    unknown = [c for c in load_profile().allow if c not in known]
+    assert not unknown, (
+        "capability ใน profiles/care-agent/profile.yaml (tools.allow) "
+        f"ที่ไม่มีใน policies/care-authority-map.yaml: {unknown}"
+    )
+
+
+def test_profile_denies_everything_that_must_never_be_autonomous():
+    """action ที่ประกาศว่า autonomous=False ต้องอยู่ใน deny หรืออย่างน้อยไม่อยู่ใน allow
+
+    ไม่งั้นจะมีช่องที่ agent เรียก action ซึ่ง "ต้องมีคนเกี่ยวข้อง" ได้เอง
+    """
+    import care_addons.care_careplan.services
+    import care_addons.care_medication.services  # noqa: F401
+    from care_addons.ap_policy.profile import load_profile
+    from care_addons.ap_policy.services import DECLARED
+
+    profile = load_profile()
+    leaked = [
+        capability
+        for capability, meta in DECLARED.items()
+        if not meta["autonomous"] and profile.allows(capability) and not profile.denies(capability)
+    ]
+    assert not leaked, f"action ที่ต้องมีคนสั่ง แต่ profile ปล่อยให้ agent เรียกได้: {leaked}"
+
+
+def test_destructive_conformance_scripts_refuse_a_real_database():
+    """สคริปต์ที่ลบทั้ง schema ต้องปฏิเสธตัวเองถ้าไม่ได้ตั้งใจ
+
+    ทั้งสามตัวถูก copy เข้า Docker image (เพื่อให้รัน db_role_check จากในเครือข่ายของ DB ได้)
+    ผู้ดูแลที่ exec เข้า container แล้วรัน rls_check เพื่อ "ตรวจว่า RLS ยังทำงานไหม"
+    เคยลบข้อมูลผู้ป่วยไปทั้งชุด — เจอจริงตอนทดสอบ docker compose ของ M5
+    """
+    import subprocess
+
+    env = {
+        **os.environ,
+        "PSTACK_DATABASE_URL": "postgresql+asyncpg://care:care@127.0.0.1:1/pretend",
+    }
+    env.pop("CONFORMANCE_ALLOW_DESTRUCTIVE", None)
+    for script in ("rls_check.py", "migration_check.py", "payload_check.py"):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "conformance" / script)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=120,
+            check=False,      # เราตรวจ exit code เอง — ต้องเป็น 2 ไม่ใช่ 0
+        )
+        assert result.returncode == 2, f"{script} ไม่ได้ปฏิเสธ DB จริง (exit {result.returncode})"
+        assert "DROP SCHEMA" in result.stderr, script
+        # ห้ามให้รหัสผ่านหลุดออกมาในข้อความเตือน
+        assert "care:care" not in result.stderr, f"{script} พิมพ์ credential ออกมาด้วย"

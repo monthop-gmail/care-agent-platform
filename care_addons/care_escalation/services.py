@@ -17,14 +17,13 @@ from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from core.clock import now
+from core.tenancy import TenantScope, assert_same_tenant, new_id, scoped
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
 from care_addons.ap_policy.engine import PolicyDenied, evaluate
-from care_addons.ap_tenancy.clock import now
-from care_addons.ap_tenancy.ids import new_id
-from care_addons.ap_tenancy.services import TenantScope, assert_same_tenant, scoped
 from care_addons.care_escalation import policy as escalation_policy
 from care_addons.care_escalation.models import CareJob, CareNotification
 from care_addons.care_patient.services import care_team, get_patient

@@ -21,6 +21,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from conformance._guard import require_destructive_consent
+
 for candidate in (ROOT / "pstack_src", ROOT.parent / "pstack"):
     if (candidate / "addons").is_dir():
         os.environ.setdefault("PSTACK_ADDONS_PATHS", f"{candidate / 'addons'},care_addons")
@@ -32,7 +34,7 @@ os.environ.setdefault("PSTACK_DATABASE_URL", f"sqlite+aiosqlite:///{CHECK_DB}")
 os.environ.setdefault("PSTACK_SECRET_KEY", "migration-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
-    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"
+    "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"
     "care_routine,care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_orchestrator,"
     "line_oa,care_line",
 )
@@ -76,6 +78,7 @@ async def main() -> int:
     if not url.startswith("sqlite"):
         from sqlalchemy import text
 
+        require_destructive_consent("migration_check.py", url)
         async with engine.begin() as conn:
             await conn.execute(text("DROP SCHEMA public CASCADE"))
             await conn.execute(text("CREATE SCHEMA public"))

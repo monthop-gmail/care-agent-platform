@@ -12,7 +12,8 @@ def test_healthz_lists_all_modules(client):
 def test_platform_and_care_routes_mounted(client):
     paths = client.get("/openapi.json").json()["paths"]
     for path in [
-        "/api/platform/tenants",
+        # tenancy เป็นของ kernel แล้ว — path ของเราถูกลบพร้อม shim (ADR-0003 รอบ 2)
+        "/api/tenancy/tenants",
         "/api/platform/consents",
         "/api/platform/audit/events",
         "/api/platform/policy/capabilities",
@@ -23,5 +24,12 @@ def test_platform_and_care_routes_mounted(client):
         "/api/care/appointments/{appointment_id}/visit-brief",
         "/api/care/orientation/daily-brief",
         "/api/care/orientation/date",
+        "/api/platform/approvals",
+        "/api/care/summary/{patient_id}",
+        "/api/care/careplan",
+        "/api/care/activities",
+        "/api/care/inventory",
+        "/api/care/home",
+        "/api/care/safety/signals",
     ]:
         assert path in paths, f"ไม่พบ route {path}"

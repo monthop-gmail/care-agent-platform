@@ -14,24 +14,41 @@ capability_requirement:
   constraints:
     max_cost_usd: 0.5
 
+# 🔒 ชื่อในสองรายการนี้คือ **capability เดียวกับที่โค้ดประกาศ** (`@care_action`)
+#    ไม่ใช่ชื่อสมมุติ — `ap_policy` โหลดไฟล์นี้จริงตอน evaluate ทุกครั้ง
+#    ถ้าตั้งชื่อไม่ตรงกับที่โค้ดใช้ ไฟล์นี้จะกลายเป็นเอกสารที่ไม่มีผล ซึ่งอันตรายกว่าไม่มีเลย
 tools:
   allow:
-    - care.orientation.brief
-    - care.routine.list_today
-    - care.medication.list_active
-    - care.medication.propose_change
-    - care.journal.record
-    - care.journal.list_open_questions
-    - care.appointment.next
-    - care.appointment.prep_status
-    - care.reminder.acknowledge
-    - care.caregiver.notify
+    # สิ่งที่ agent ทำเองได้ถ้า policy ของ tenant อนุญาต — เพดาน ไม่ใช่การอนุญาต
+    - orientation.brief.send
+    - orientation.answer
+    - routine.reminder.send
+    - meal.reminder.send
+    - medication.reminder.send
+    - appointment.reminder.send
+    - appointment.prep.write
+    - journal.entry.write
+    - question.entry.write
+    - medication.regimen.propose      # เสนอได้ — ทำให้มีผลไม่ได้ (ADR-0006)
+    - careplan.task.write             # จดคำสั่งหมอได้ — ทำให้ active ไม่ได้
+    - activity.step.record
+    - inventory.item.write
+    - home.item.write
+    - safety.signal.intake
+    - caregiver.notify
+    - emergency.escalate
   deny:
-    # 🔒 ไม่มีทางที่ agent จะเขียน regimen เองได้ ต่อให้ policy ของ tenant เผลอเปิด
-    - care.medication.write_regimen
-    - care.medication.stop
-    - care.diagnosis.any
-    - care.consent.grant
+    # 🔒 ไม่มีทางที่ agent จะทำสิ่งเหล่านี้ได้ ต่อให้ policy ของ tenant เผลอเปิด
+    #    deny ชนะ allow เสมอ และชนะ authority_map ด้วย (profile/v1)
+    - medication.regimen.write
+    - medication.regimen.stop
+    - careplan.task.activate
+    - care.profile.update             # เปิด/ปิดความสามารถของผู้ป่วยเป็นการตัดสินใจของคน
+    - clinical.export
+    # ชื่อที่ต้องไม่มีวันมีอยู่จริงในโค้ด — ถ้าวันหนึ่งมีใครประกาศ capability ชื่อนี้
+    # มันจะถูกปฏิเสธตั้งแต่วินาทีแรกโดยไม่ต้องรอให้ใครสังเกตเห็นใน review
+    - diagnosis.any
+    - consent.grant
     - fs.file.write
     - shell.execute
 
@@ -53,6 +70,10 @@ policy:
     - filesystem
     - network_egress
     - autonomous_execution
+  # tool ที่ต้องให้คนสั่งเสมอ ไม่ว่า action_risk จะเป็นเท่าไร — ยกพื้นเหนือ authority_map
+  require_human_for:
+    - medication.regimen.write
+    - medication.regimen.stop
 
 budget:
   max_cost_usd_per_execution: 0.5

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
+from addons.tenancy.deps import ScopeDep, SessionDep
 from core.auth import require_permission
+from core.tenancy import scoped
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from care_addons.ap_tenancy.deps import ScopeDep, SessionDep
-from care_addons.ap_tenancy.services import scoped
 from care_addons.care_line import services as svc
 from care_addons.care_line.models import CareLineBinding
 

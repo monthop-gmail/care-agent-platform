@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from addons.tenancy.deps import ScopeDep, SessionDep
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from care_addons.ap_tenancy.deps import ScopeDep, SessionDep
 from care_addons.care_journal import services as svc
 
 router = APIRouter(prefix="/api/care/journal", tags=["care: journal"])

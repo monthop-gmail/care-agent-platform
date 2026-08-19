@@ -22,6 +22,8 @@ from datetime import timedelta
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from conformance._guard import require_destructive_consent
+
 for candidate in (ROOT / "pstack_src", ROOT.parent / "pstack"):
     if (candidate / "addons").is_dir():
         os.environ.setdefault("PSTACK_ADDONS_PATHS", f"{candidate / 'addons'},care_addons")
@@ -38,7 +40,7 @@ os.environ.setdefault("PSTACK_DATABASE_URL", f"sqlite+aiosqlite:///{CHECK_DB}")
 os.environ.setdefault("PSTACK_SECRET_KEY", "payload-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
-    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,care_routine,"
+    "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,care_routine,"
     "care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_orchestrator",
 )
 
@@ -140,20 +142,21 @@ async def run_scenario() -> tuple[list, list, list]:
 
     คืน (audit events, policy decisions, consent grants)
     """
+    from addons.tenancy import services as kernel_tenancy
     from core.app import create_app  # core.app เรียก logging.basicConfig ตอน import
+    from core.clock import FakeClock
     from core.db import dispose_engine, get_engine, get_sessionmaker
     from core.registry import create_core_tables, sync_modules
     from core.runtime import ctx
-    from core.tenancy import bind_tenant
+    from core.tenancy import Principal, TenantScope, bind_tenant
     from sqlalchemy import select
 
     from care_addons.ap_approval import services as approvals
     from care_addons.ap_approval.models import ApApproval
     from care_addons.ap_audit.models import ApAuditEvent
+    from care_addons.ap_consent import services as consent
     from care_addons.ap_consent.models import ApConsentGrant
     from care_addons.ap_policy.engine import evaluate
-    from care_addons.ap_tenancy import services as tenancy
-    from care_addons.ap_tenancy.clock import FakeClock
     from care_addons.care_activity import services as activities
     from care_addons.care_appointment import services as appointments
     from care_addons.care_careplan import services as careplan
@@ -185,6 +188,7 @@ async def run_scenario() -> tuple[list, list, list]:
     if not url.startswith("sqlite"):
         from sqlalchemy import text
 
+        require_destructive_consent("payload_check.py", url)
         async with engine.begin() as conn:
             await conn.execute(text("DROP SCHEMA public CASCADE"))
             await conn.execute(text("CREATE SCHEMA public"))
@@ -193,17 +197,17 @@ async def run_scenario() -> tuple[list, list, list]:
         await sync_modules(engine, bootstrap, ctx.load_order)
 
     tenant_id = "t-payload-check"
-    admin = tenancy.TenantScope(
+    admin = TenantScope(
         tenant_id=tenant_id,
-        principal=tenancy.Principal(type="human", id="user-1", display_name="ผู้ดูแลระบบ"),
+        principal=Principal(type="human", id="user-1", display_name="ผู้ดูแลระบบ"),
     )
-    system = tenancy.TenantScope(
-        tenant_id=tenant_id, principal=tenancy.Principal(type="service", id="care-orchestrator")
+    system = TenantScope(
+        tenant_id=tenant_id, principal=Principal(type="service", id="care-orchestrator")
     )
 
     with FakeClock("2026-08-19T00:30:00+00:00") as clock:
         async with get_sessionmaker()() as session:
-            await tenancy.create_tenant(session, tenant_id, "ครอบครัวตรวจสอบ")
+            await kernel_tenancy.create_tenant(session, tenant_id, "ครอบครัวตรวจสอบ")
             await bind_tenant(session, tenant_id)   # RLS ของตารางโดเมน
             patient = await patients.create_patient(
                 session,
@@ -217,25 +221,25 @@ async def run_scenario() -> tuple[list, list, list]:
                 channels=["line"],
             )
             for grantee, kind in (("user-1", "human"), ("care-orchestrator", "service")):
-                await tenancy.grant_consent(
+                await consent.grant_consent(
                     session, admin,
                     subject_id=patient.patient_id,
-                    grantee=tenancy.Principal(type=kind, id=grantee),
+                    grantee=Principal(type=kind, id=grantee),
                     scopes=["care.manage"],
-                    granted_by=tenancy.Principal(type="human", id="user-1"),
+                    granted_by=Principal(type="human", id="user-1"),
                     authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
                 )
             # ใบที่ถูกเพิกถอน — ให้ payload ที่มี revoked_* ครบเข้าไป validate ด้วย
-            revoked = await tenancy.grant_consent(
+            revoked = await consent.grant_consent(
                 session, admin,
                 subject_id=patient.patient_id,
-                grantee=tenancy.Principal(type="human", id="user-9"),
+                grantee=Principal(type="human", id="user-9"),
                 scopes=["routine.read"],
                 purpose="family_awareness",
-                granted_by=tenancy.Principal(type="human", id="user-1"),
+                granted_by=Principal(type="human", id="user-1"),
                 authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
             )
-            await tenancy.revoke_consent(
+            await consent.revoke_consent(
                 session, admin, revoked.grant_id, reason="ญาติย้ายออกจากทีมดูแลแล้ว"
             )
             caregiver = await patients.add_caregiver(
@@ -272,19 +276,19 @@ async def run_scenario() -> tuple[list, list, list]:
                 )
                 await medications.confirm_version(
                     session, admin, version.version_id,
-                    confirmed_by=tenancy.Principal(type="human", id="user-1"),
+                    confirmed_by=Principal(type="human", id="user-1"),
                 )
 
             # agent เสนอยาอีกตัว แล้วคนกดอนุมัติ → ได้ใบอนุมัติจริงตาม approval/v1
-            agent_scope = tenancy.TenantScope(
+            agent_scope = TenantScope(
                 tenant_id=tenant_id,
-                principal=tenancy.Principal(type="agent", id="care-agent"),
+                principal=Principal(type="agent", id="care-agent"),
             )
-            await tenancy.grant_consent(
+            await consent.grant_consent(
                 session, admin, subject_id=patient.patient_id,
-                grantee=tenancy.Principal(type="agent", id="care-agent"),
+                grantee=Principal(type="agent", id="care-agent"),
                 scopes=["care.manage"],
-                granted_by=tenancy.Principal(type="human", id="user-1"),
+                granted_by=Principal(type="human", id="user-1"),
                 authority_basis="ผู้ดูแลหลักมอบหมาย",
             )
             await medications.propose_version(
@@ -308,7 +312,7 @@ async def run_scenario() -> tuple[list, list, list]:
             )
             await careplan.activate_task(
                 session, admin, plan_task.task_id,
-                activated_by=tenancy.Principal(type="human", id="user-2", display_name="ลูกสาว"),
+                activated_by=Principal(type="human", id="user-2", display_name="ลูกสาว"),
             )
 
             # Daily living: งานหลายขั้นตอน · ของที่บ้าน · ของใช้ประจำตัว
@@ -329,7 +333,7 @@ async def run_scenario() -> tuple[list, list, list]:
             )
             await home.set_state(
                 session, admin, shirt.item_id, state="used",
-                confirmed_by=tenancy.Principal(type="human", id="user-1"),
+                confirmed_by=Principal(type="human", id="user-1"),
             )
             # สัญญาณจากอุปกรณ์จริง — external event ที่ต้องคง source ไว้ตลอดไป
             await safety.report_signal(
@@ -362,9 +366,9 @@ async def run_scenario() -> tuple[list, list, list]:
             if open_ones:
                 await jobs.acknowledge(
                     session,
-                    tenancy.TenantScope(
+                    TenantScope(
                         tenant_id=tenant_id,
-                        principal=tenancy.Principal(type="human", id=patient.patient_id),
+                        principal=Principal(type="human", id=patient.patient_id),
                     ),
                     open_ones[0].care_job_id,
                 )

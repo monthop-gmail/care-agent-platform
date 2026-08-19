@@ -10,9 +10,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from core.clock import FakeClock
+from core.tenancy import Principal
 
-from care_addons.ap_tenancy.clock import FakeClock
-from care_addons.ap_tenancy.services import Principal
 from care_addons.care_appointment import services as appointments
 from care_addons.care_escalation import services as jobs
 from care_addons.care_journal import services as journal
@@ -31,7 +31,7 @@ PROFILE = {
 async def _appointment_tomorrow(session, tenant, *, hours_ahead: int = 24):
     patient, caregiver = await setup_patient(session, tenant, profile=PROFILE)
     scope = scope_for(tenant)
-    from care_addons.ap_tenancy.clock import now
+    from core.clock import now
 
     appointment = await appointments.create_appointment(
         session,

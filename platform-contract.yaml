@@ -41,13 +41,13 @@ conformance:
       command: python conformance/drift_check.py
       scope: contract ของ repo นี้ยัง $ref ตรงกับ agent-platform ที่ pin ไว้
     - name: payload_check
-      command: python conformance/payload_check.py
+      command: CONFORMANCE_ALLOW_DESTRUCTIVE=1 python conformance/payload_check.py
       scope: >-
         payload จริงที่ระบบผลิต validate ผ่าน event/v1 · policy/v1 · error/v1 · consent/v1
         · approval/v1 (audit event + consent grant ทั้งใบที่ยังใช้ได้และใบที่ถูกเพิกถอน
         + ใบอนุมัติที่เกิดจากคนกดจริงใน scenario)
     - name: migration_check
-      command: python conformance/migration_check.py
+      command: CONFORMANCE_ALLOW_DESTRUCTIVE=1 python conformance/migration_check.py
       scope: schema ที่สร้างจาก migration ล้วน ๆ ตรงกับ models — แก้ models แล้วลืม revision = CI แดง
     - name: db_role_check
       command: python conformance/db_role_check.py
@@ -55,7 +55,7 @@ conformance:
         role ที่แอปใช้ต่อ DB ไม่ใช่ superuser และไม่มี BYPASSRLS
         — ถ้าใช่ RLS จะไร้ผลทั้งหมดโดยไม่มีสัญญาณ (step แรกที่แตะ DB ใน CI)
     - name: rls_check
-      command: python conformance/rls_check.py
+      command: CONFORMANCE_ALLOW_DESTRUCTIVE=1 python conformance/rls_check.py
       scope: >-
         tenant isolation ชั้น DB ทำงานจริง — query ดิบไม่ผ่าน scoped() ข้าม tenant ต้องเห็น 0 แถว
         · ตอบข้อกำหนดของ identity/v1 ที่ว่า isolation ต้องลงลึกถึง DB ไม่ใช่แค่ filter ระดับ query

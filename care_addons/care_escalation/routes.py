@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from addons.tenancy.deps import ScopeDep, SessionDep
+from core.tenancy import scoped
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from care_addons.ap_tenancy.deps import ScopeDep, SessionDep
-from care_addons.ap_tenancy.services import scoped
 from care_addons.care_escalation import services as svc
 from care_addons.care_escalation.models import CareJob, CareNotification
 

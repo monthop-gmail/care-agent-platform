@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
+from addons.tenancy.deps import ScopeDep, SessionDep
 from core.auth import require_permission
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from care_addons.ap_tenancy.deps import ScopeDep, SessionDep
-from care_addons.ap_tenancy.services import ConsentDenied
+from care_addons.ap_consent.services import ConsentDenied
 from care_addons.care_patient import services as svc
 
 router = APIRouter(prefix="/api/care/patients", tags=["care: patients"])

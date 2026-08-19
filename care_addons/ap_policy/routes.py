@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from addons.tenancy.deps import ScopeDep
 from fastapi import APIRouter
 
 from care_addons.ap_policy.engine import RISK_ORDER, load_policy
 from care_addons.ap_policy.services import DECLARED
-from care_addons.ap_tenancy.deps import ScopeDep
 
 router = APIRouter(prefix="/api/platform/policy", tags=["platform: policy"])
 

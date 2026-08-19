@@ -7,10 +7,10 @@
 from __future__ import annotations
 
 import pytest
+from core.clock import FakeClock
+from core.tenancy import Principal
 
 from care_addons.ap_policy.engine import evaluate
-from care_addons.ap_tenancy.clock import FakeClock
-from care_addons.ap_tenancy.services import Principal
 from care_addons.care_medication import services as meds
 from tests.conftest import audit_events, scope_for, setup_patient
 

@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from core.clock import now
 from core.db import Base
 from sqlalchemy import JSON, Date, DateTime, Float, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
-
-from care_addons.ap_tenancy.clock import now
 
 CATEGORIES = ["food", "drink", "medicine_supply", "hygiene", "cleaning", "household", "other"]
 STATUSES = ["in_stock", "consumed", "discarded"]

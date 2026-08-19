@@ -11,13 +11,12 @@ import secrets
 import string
 from datetime import timedelta
 
+from core.clock import now
+from core.tenancy import Principal, TenantScope, new_id, scoped
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
-from care_addons.ap_tenancy.clock import now
-from care_addons.ap_tenancy.ids import new_id
-from care_addons.ap_tenancy.services import Principal, TenantScope, scoped
 from care_addons.care_line.models import ROLES, CareLineBinding, CareLinePairingCode
 
 logger = logging.getLogger(__name__)

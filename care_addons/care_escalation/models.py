@@ -7,11 +7,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from core.clock import now
 from core.db import Base
 from sqlalchemy import JSON, DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from care_addons.ap_tenancy.clock import now
 
 JOB_STATES = ["pending", "reminded", "acknowledged", "confirmed", "missed", "escalated", "cancelled"]
 

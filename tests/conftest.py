@@ -23,7 +23,6 @@ MODULES = [
     "users",
     "tenancy",
     "ap_consent",
-    "ap_tenancy",
     "ap_audit",
     "ap_policy",
     "ap_approval",
@@ -52,11 +51,13 @@ os.environ["PSTACK_MODULES"] = ",".join(MODULES)
 
 import pytest
 import pytest_asyncio
+from addons.tenancy import services as kernel_tenancy
 from core.app import create_app
+from core.clock import set_now
+from core.tenancy import Principal, TenantScope
 from fastapi.testclient import TestClient
 
-from care_addons.ap_tenancy import services as tenancy
-from care_addons.ap_tenancy.clock import set_now
+from care_addons.ap_consent import services as consent
 
 DB_FILE = ROOT / "test_care.db"
 DATABASE_URL = os.environ["PSTACK_DATABASE_URL"]
@@ -118,18 +119,18 @@ async def session(app):
 
 
 def scope_for(tenant_id: str, principal_id: str = "user-1", correlation_id: str | None = None):
-    return tenancy.TenantScope(
+    return TenantScope(
         tenant_id=tenant_id,
-        principal=tenancy.Principal(type="human", id=principal_id, display_name="tester"),
+        principal=Principal(type="human", id=principal_id, display_name="tester"),
         correlation_id=correlation_id,
     )
 
 
 def system_scope(tenant_id: str):
     """scope ของ orchestrator ที่เดิน closed loop"""
-    return tenancy.TenantScope(
+    return TenantScope(
         tenant_id=tenant_id,
-        principal=tenancy.Principal(type="service", id="care-orchestrator"),
+        principal=Principal(type="service", id="care-orchestrator"),
     )
 
 
@@ -150,7 +151,7 @@ async def tenant(session):
     import uuid
 
     tenant_id = f"t-{uuid.uuid4().hex[:8]}"
-    await tenancy.create_tenant(session, tenant_id, "Test Family")
+    await kernel_tenancy.create_tenant(session, tenant_id, "Test Family")
     await session.commit()
     await use_tenant(session, tenant_id)   # เทสเกือบทั้งหมดใช้ tenant เดียว
     return tenant_id
@@ -183,22 +184,22 @@ async def setup_patient(
         channels=["line"],
         quiet_hours=quiet_hours,
     )
-    await tenancy.grant_consent(
+    await consent.grant_consent(
         session,
         admin,
         subject_id=patient.patient_id,
-        grantee=tenancy.Principal(type="human", id="user-1"),
+        grantee=Principal(type="human", id="user-1"),
         scopes=["care.manage"],
-        granted_by=tenancy.Principal(type="human", id="user-1"),
+        granted_by=Principal(type="human", id="user-1"),
             authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
     )
-    await tenancy.grant_consent(
+    await consent.grant_consent(
         session,
         admin,
         subject_id=patient.patient_id,
-        grantee=tenancy.Principal(type="service", id="care-orchestrator"),
+        grantee=Principal(type="service", id="care-orchestrator"),
         scopes=["care.manage"],
-        granted_by=tenancy.Principal(type="human", id="user-1"),
+        granted_by=Principal(type="human", id="user-1"),
             authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
     )
     caregiver = None
@@ -214,13 +215,13 @@ async def setup_patient(
         await patients.assign_to_care_team(
             session, admin, patient_id=patient.patient_id, caregiver_id=caregiver.caregiver_id
         )
-        await tenancy.grant_consent(
+        await consent.grant_consent(
             session,
             admin,
             subject_id=patient.patient_id,
-            grantee=tenancy.Principal(type="human", id="user-2"),
+            grantee=Principal(type="human", id="user-2"),
             scopes=["routine.read", "medication.read"],
-            granted_by=tenancy.Principal(type="human", id="user-1"),
+            granted_by=Principal(type="human", id="user-1"),
             authority_basis="ผู้ดูแลหลักที่ครอบครัวมอบหมาย",
         )
     await session.commit()
@@ -233,9 +234,9 @@ async def notifications(session, tenant_id: str, patient_id: str, audience: str 
     เทสห้าม `select(CareNotification)` ลอย ๆ เพราะจะไปเห็นของเทสอื่นที่รันก่อนหน้า
     (เป็นเหตุผลเดียวกับที่โค้ดจริงต้องผ่าน tenant guard เสมอ)
     """
+    from core.tenancy import scoped
     from sqlalchemy import select
 
-    from care_addons.ap_tenancy.services import scoped
     from care_addons.care_escalation.models import CareNotification
 
     stmt = select(CareNotification).where(CareNotification.patient_id == patient_id)

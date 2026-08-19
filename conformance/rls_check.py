@@ -27,6 +27,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from conformance._guard import require_destructive_consent
+
 for candidate in (ROOT / "pstack_src", ROOT.parent / "pstack"):
     if (candidate / "addons").is_dir():
         os.environ.setdefault("PSTACK_ADDONS_PATHS", f"{candidate / 'addons'},care_addons")
@@ -36,7 +38,7 @@ for candidate in (ROOT / "pstack_src", ROOT.parent / "pstack"):
 os.environ.setdefault("PSTACK_SECRET_KEY", "rls-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
-    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"
+    "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"
     "care_routine,care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_orchestrator",
 )
 
@@ -72,13 +74,13 @@ CONTROL_PLANE = ["care_line_binding", "care_line_pairing_code"]
 
 async def main() -> int:
     import sqlalchemy as sa
+    from addons.tenancy import services as kernel_tenancy
     from core.app import create_app
     from core.db import dispose_engine, get_engine, get_sessionmaker
     from core.registry import create_core_tables, sync_modules
     from core.runtime import ctx
     from core.tenancy import Principal, TenantScope, bind_tenant, unbind_tenant
 
-    from care_addons.ap_tenancy import services as tenancy
     from care_addons.care_patient import services as patients
 
     logging.getLogger().setLevel(logging.WARNING)
@@ -86,6 +88,8 @@ async def main() -> int:
     if not url.startswith("postgresql"):
         print("ℹ ข้าม — ไม่ใช่ Postgres (sqlite ไม่มี RLS)")
         return 0
+
+    require_destructive_consent("rls_check.py", url)
 
     create_app()
     engine = get_engine()
@@ -126,7 +130,7 @@ async def main() -> int:
     async with get_sessionmaker()() as session:
         made: dict[str, str] = {}
         for tenant_id in ("t-rls-a", "t-rls-b"):
-            await tenancy.create_tenant(session, tenant_id, tenant_id)
+            await kernel_tenancy.create_tenant(session, tenant_id, tenant_id)
             await session.commit()
             await bind_tenant(session, tenant_id)
             scope = TenantScope(

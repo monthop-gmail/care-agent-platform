@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from core.clock import FakeClock
+
 from care_addons.ap_approval import services as approvals
 from care_addons.ap_policy.engine import evaluate
-from care_addons.ap_tenancy.clock import FakeClock
 from care_addons.care_escalation import services as jobs
 from care_addons.care_orchestrator import services as orchestrator
 from care_addons.care_orchestrator import summary_policy

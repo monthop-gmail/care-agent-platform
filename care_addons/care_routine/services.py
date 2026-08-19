@@ -8,13 +8,12 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from core.clock import now
+from core.tenancy import TenantScope, new_id, scoped
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
-from care_addons.ap_tenancy.clock import now
-from care_addons.ap_tenancy.ids import new_id
-from care_addons.ap_tenancy.services import TenantScope, scoped
 from care_addons.care_escalation.models import CareJob
 from care_addons.care_escalation.services import create_job
 from care_addons.care_patient.services import feature_enabled, get_patient

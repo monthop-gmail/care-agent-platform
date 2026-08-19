@@ -12,10 +12,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
+from core.clock import FakeClock
+from core.tenancy import Principal, TenantScope
 
 from care_addons.ap_approval import services as approvals
-from care_addons.ap_tenancy.clock import FakeClock
-from care_addons.ap_tenancy.services import Principal, TenantScope
 from care_addons.care_careplan import services as careplan
 from care_addons.care_escalation import services as jobs
 from care_addons.care_orchestrator import services as orchestrator
@@ -311,7 +311,8 @@ async def test_patient_without_consent_is_skipped_not_crashed(session, tenant):
 
 
 async def test_careplan_tasks_do_not_leak_across_tenants(session, tenant):
-    from care_addons.ap_tenancy import services as tenancy
+    from addons.tenancy import services as kernel_tenancy
+
     from tests.conftest import use_tenant
 
     with FakeClock("2026-08-19T01:00:00+00:00"):
@@ -320,7 +321,7 @@ async def test_careplan_tasks_do_not_leak_across_tenants(session, tenant):
         await session.commit()
 
         other = f"{tenant}-other"
-        await tenancy.create_tenant(session, other, "อีกครอบครัว")
+        await kernel_tenancy.create_tenant(session, other, "อีกครอบครัว")
         await session.commit()
         await use_tenant(session, other)
         other_scope = TenantScope(

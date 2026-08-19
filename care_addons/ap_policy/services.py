@@ -5,6 +5,8 @@
 
 สิ่งที่ decorator ทำให้เสมอ:
   1. ประเมิน policy จาก capability (fail closed ถ้าไม่ได้ประกาศ → critical)
+     แล้วผ่านเพดานของ agent profile อีกชั้น — capability ที่ profile ห้าม agent ใช้
+     จะ raise ทันทีไม่ว่า action นั้นจะ autonomous หรือไม่
   2. ออก audit event GOVERNANCE_DECISION พร้อม policy_result (ADR-0010: บันทึกทั้ง risk และ authority)
   3. ปฏิเสธทันทีถ้า agent ลงมือเองไม่ได้ และ action นั้นประกาศตัวว่าเป็น autonomous
 """
@@ -16,9 +18,10 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from core.tenancy import new_id
+
 from care_addons.ap_audit import services as audit
 from care_addons.ap_policy.engine import Decision, PolicyDenied, evaluate
-from care_addons.ap_tenancy.ids import new_id
 
 # capability ที่ประกาศไว้จริงในโค้ด — ใช้ตรวจว่ามี action ไหนลืมประกาศ (tests/)
 DECLARED: dict[str, dict[str, Any]] = {}
@@ -43,7 +46,8 @@ def care_action(
 
         @functools.wraps(fn)
         async def wrapper(session: Any, scope: Any, *args: Any, **kwargs: Any) -> Any:
-            decision: Decision = evaluate(capability)
+            actor_type = getattr(getattr(scope, "principal", None), "type", None)
+            decision: Decision = evaluate(capability, actor_type=actor_type)
             await audit.emit(
                 session,
                 scope,
@@ -53,6 +57,10 @@ def care_action(
                 policy_result=decision.as_policy_result(),
                 attributes={"capability": capability, "reason": decision.reason},
             )
+            # 🔒 profile ปฏิเสธ = ห้ามเดินต่อเสมอ ไม่ว่า action นั้นจะ autonomous หรือไม่
+            #    (autonomous=False แปลว่า "ต้องมีคนเกี่ยวข้อง" ไม่ใช่ "ใครเรียกก็ได้")
+            if decision.profile_denied:
+                raise PolicyDenied(decision)
             if autonomous and not decision.may_act_now:
                 raise PolicyDenied(decision)
             if accepts_decision:

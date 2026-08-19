@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Any
 
+from addons.tenancy.deps import ScopeDep, SessionDep
 from core.auth import require_permission
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from care_addons.ap_tenancy.deps import ScopeDep, SessionDep
 from care_addons.care_routine import services as svc
 
 router = APIRouter(prefix="/api/care/routines", tags=["care: routine"])

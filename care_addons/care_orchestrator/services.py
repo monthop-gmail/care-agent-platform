@@ -14,15 +14,14 @@ import logging
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from core.clock import now
+from core.tenancy import TenantScope, new_id, scoped
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_approval import services as approvals
 from care_addons.ap_audit import services as audit
-from care_addons.ap_tenancy.clock import now
-from care_addons.ap_tenancy.ids import new_id
-from care_addons.ap_tenancy.services import TenantScope, scoped
 from care_addons.care_escalation import services as escalation
 from care_addons.care_escalation.models import CareJob
 from care_addons.care_orchestrator import summary_policy

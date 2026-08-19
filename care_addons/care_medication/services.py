@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from core.clock import now
+from core.tenancy import Principal, TenantScope, new_id, scoped
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,9 +22,6 @@ from care_addons.ap_approval import services as approvals
 from care_addons.ap_audit import services as audit
 from care_addons.ap_policy.engine import evaluate
 from care_addons.ap_policy.services import care_action
-from care_addons.ap_tenancy.clock import now
-from care_addons.ap_tenancy.ids import new_id
-from care_addons.ap_tenancy.services import Principal, TenantScope, scoped
 from care_addons.care_medication.models import (
     INSTRUCTION_SOURCES,
     RELATION_TO_MEAL,

@@ -7,8 +7,9 @@
 
 from __future__ import annotations
 
+from core.clock import FakeClock
+
 from care_addons.ap_audit import services as audit
-from care_addons.ap_tenancy.clock import FakeClock
 from care_addons.care_escalation import services as jobs
 from care_addons.care_routine import services as routines
 from tests.conftest import (

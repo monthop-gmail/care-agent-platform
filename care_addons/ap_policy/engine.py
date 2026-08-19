@@ -15,12 +15,12 @@ agent-platform ADR-0010:
 from __future__ import annotations
 
 import fnmatch
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
-from care_addons.ap_tenancy.clock import now
+from core.clock import now
 
 RISK_ORDER = ["low", "medium", "high", "critical"]
 AUTHORITY_ORDER = ["auto", "notify", "approval_required", "human_command_required"]
@@ -56,6 +56,11 @@ class Decision:
     reason: str = ""
     constraint: str = "none"
     evaluated_at: datetime | None = None
+    # 🔒 profile ของ agent ปฏิเสธ capability นี้ — ห้ามเดินต่อไม่ว่า authority จะเป็นอะไร
+    profile_denied: bool = False
+    # ข้อยกเว้นที่ config ประกาศไว้อย่างเปิดเผยและต้อง audit เต็ม (เช่น emergency.escalate
+    # ที่เป็น critical แต่ต้องเร็วกว่าการรอคนสั่ง — ADR-0007 ข้อ 5) · เพดานไม่ยกทับข้อนี้
+    audited_exception: bool = False
 
     @property
     def requires_human(self) -> bool:
@@ -110,6 +115,17 @@ class Policy:
                 raise PolicyConfigError(f"action_risk ที่ไม่รู้จักใน authority_map: {risk}")
             if authority not in AUTHORITY_ORDER:
                 raise PolicyConfigError(f"authority ที่ไม่รู้จัก: {authority}")
+        from care_addons.ap_policy.profile import load_profile
+
+        profile = load_profile()
+        for risk, ceiling in profile.authority_map.items():
+            configured = self.authority_map.get(risk)
+            if configured and _rank(configured, AUTHORITY_ORDER) < _rank(ceiling, AUTHORITY_ORDER):
+                raise PolicyConfigError(
+                    f"authority_map[{risk}]={configured} หลวมกว่าเพดานของ profile ({ceiling}) "
+                    f"— profile เป็นเพดาน ไม่ใช่การอนุญาต ค่าที่กว้างที่สุดชนะไม่ได้ (profile/v1)"
+                )
+
         for risk, required in self.floor_risk.items():
             configured = self.authority_map.get(risk)
             if configured and _rank(configured, AUTHORITY_ORDER) < _rank(required, AUTHORITY_ORDER):
@@ -152,9 +168,10 @@ class Policy:
             authority = override
             reason += f" · override เฉพาะ capability นี้ ({override})"
 
+        audited_exception = bool(override in AUTHORITY_ORDER and entry.get("requires_full_audit"))
         floor = self._floor_for(capability, risk)
         if floor and _rank(authority, AUTHORITY_ORDER) < _rank(floor, AUTHORITY_ORDER):
-            if override in AUTHORITY_ORDER and entry.get("requires_full_audit"):
+            if audited_exception:
                 reason += " · ข้อยกเว้นที่ต้อง audit เต็ม"
             else:
                 authority = floor
@@ -168,11 +185,66 @@ class Policy:
             capability=capability,
             reason=reason,
             evaluated_at=now(),
+            audited_exception=audited_exception,
         )
 
 
-def evaluate(capability: str, *, tenant_overrides: dict | None = None, path: str | None = None) -> Decision:
-    return load_policy(path).evaluate(capability, tenant_overrides=tenant_overrides)
+def evaluate(
+    capability: str,
+    *,
+    tenant_overrides: dict | None = None,
+    path: str | None = None,
+    actor_type: str | None = None,
+) -> Decision:
+    """ตัดสิน capability นี้ — แล้วเอาผลไปผ่าน **เพดานของ profile** อีกชั้น
+
+    `actor_type` คือชนิดของ principal ที่กำลังจะลงมือ · profile เป็นเพดานของ **agent**
+    ไม่ใช่ของคน — ผู้ดูแลที่ยืนยันคำสั่งยาคือการใช้อำนาจของคน ไม่ใช่การที่ agent ทำงาน
+    """
+    decision = load_policy(path).evaluate(capability, tenant_overrides=tenant_overrides)
+    return apply_profile(decision, actor_type=actor_type)
+
+
+def apply_profile(decision: Decision, *, actor_type: str | None = None) -> Decision:
+    """🔒 ค่าที่กว้างที่สุดชนะไม่ได้ — ผลลัพธ์คือส่วนที่ profile กับ policy ตกลงตรงกัน"""
+    from care_addons.ap_policy.profile import load_profile
+
+    profile = load_profile()
+    capability = decision.capability
+    authority = decision.authority
+    effect = decision.effect
+    reason = decision.reason
+    denied = False
+
+    # require_human_for ยกพื้นเหนือ authority_map — ใช้กับทุก actor ไม่ใช่แค่ agent
+    if profile.requires_human(capability) and _rank(authority, AUTHORITY_ORDER) < _rank(
+        "human_command_required", AUTHORITY_ORDER
+    ):
+        authority = "human_command_required"
+        reason += " · profile บังคับว่าต้องให้คนสั่ง"
+
+    # ข้อยกเว้นที่ประกาศไว้อย่างเปิดเผยและต้อง audit เต็ม ไม่ถูกเพดานยกทับ
+    # (ไม่งั้น emergency.escalate จะกลายเป็น human_command_required ซึ่งแปลว่า
+    #  ตอนฉุกเฉินระบบจะรอคนสั่งก่อนถึงจะเรียกคน — ตรงข้ามกับที่ต้องการ)
+    ceiling = None if decision.audited_exception else profile.ceiling_for(decision.action_risk)
+    if ceiling and _rank(authority, AUTHORITY_ORDER) < _rank(ceiling, AUTHORITY_ORDER):
+        authority = ceiling
+        reason += f" · ยกขึ้นตามเพดานของ profile ({ceiling})"
+
+    if profile.governs(actor_type):
+        if profile.denies(capability):
+            denied, effect = True, "deny"
+            authority = "human_command_required"
+            reason += f" · profile '{profile.profile_id}' ห้าม agent ใช้ capability นี้"
+        elif not profile.allows(capability):
+            # allow ว่าง/ไม่ครอบ = ไม่อนุญาต ไม่ใช่ "อนุญาตทั้งหมด" (profile/v1)
+            denied, effect = True, "deny"
+            authority = "human_command_required"
+            reason += f" · capability นี้ไม่อยู่ใน allowlist ของ profile '{profile.profile_id}'"
+
+    if (effect, authority, denied) == (decision.effect, decision.authority, decision.profile_denied):
+        return decision
+    return replace(decision, effect=effect, authority=authority, reason=reason, profile_denied=denied)
 
 
 def require_autonomy(capability: str, *, tenant_overrides: dict | None = None) -> Decision:
