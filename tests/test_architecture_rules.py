@@ -155,6 +155,15 @@ def test_care_tick_is_registered_as_a_periodic_job():
     assert "care_tick" in [fn.__name__ for fn, _ in periodic_jobs()]
 
 
+def test_daily_tick_is_registered_as_a_periodic_job():
+    """สรุปประจำวันต้องมีอะไรมาปลุกเหมือน care_tick — ไม่งั้นผู้ดูแลจะไม่ได้อะไรเลยโดยไม่มี error"""
+    from core.jobs import periodic_jobs
+
+    import care_addons.care_orchestrator.jobs  # noqa: F401  ลงทะเบียนตอน import
+
+    assert "care_daily_tick" in [fn.__name__ for fn, _ in periodic_jobs()]
+
+
 def test_every_session_opened_in_addons_binds_a_tenant():
     """ทุกที่ที่เปิด session เองต้องผูก tenant ก่อนแตะข้อมูลโดเมน
 

@@ -14,11 +14,12 @@ contracts:
   - policy/v1       # action_risk × authority_map → authority (ap_policy)
   - capability/v1   # ActionRisk — ผูกกับ capability ไม่ใช่กับ request
   - error/v1        # error ใน audit event เป็น object ตาม taxonomy นี้ ไม่ใช่ข้อความอิสระ
-  - consent/v1      # ความยินยอมเข้าถึงข้อมูลของบุคคล (ap_tenancy) — เสนอโดย repo นี้เอง (ADR-0012)
+  - consent/v1      # ความยินยอมเข้าถึงข้อมูลของบุคคล (ap_consent) — เสนอโดย repo นี้เอง (ADR-0012)
+  - approval/v1     # คำตัดสินของผู้มีอำนาจหลังจาก policy บอกว่าต้องขออนุมัติ (ap_approval)
+                    # decision immutable · ไม่มี auto-approve · ผู้ยื่นตัดสินให้ตัวเองไม่ได้
 
 # contract ที่ยังไม่ได้ใช้ — จะเพิ่มเมื่อ implement จริง ไม่ประกาศล่วงหน้า
 not_yet:
-  - approval/v1     # รอ ap_approval (M3) — ตอนนี้ action ที่ต้องมีคนสั่งถูกกั้นด้วย policy อย่างเดียว
   - execution/v1    # ยังไม่มี agent runtime ที่ผลิต execution record
   - tool/v1         # tool ของ LLM ยังไม่ได้เปิดให้ผู้ป่วยใช้ (ADR-0008)
 
@@ -43,7 +44,8 @@ conformance:
       command: python conformance/payload_check.py
       scope: >-
         payload จริงที่ระบบผลิต validate ผ่าน event/v1 · policy/v1 · error/v1 · consent/v1
-        (audit event + consent grant ทั้งใบที่ยังใช้ได้และใบที่ถูกเพิกถอน)
+        · approval/v1 (audit event + consent grant ทั้งใบที่ยังใช้ได้และใบที่ถูกเพิกถอน
+        + ใบอนุมัติที่เกิดจากคนกดจริงใน scenario)
     - name: migration_check
       command: python conformance/migration_check.py
       scope: schema ที่สร้างจาก migration ล้วน ๆ ตรงกับ models — แก้ models แล้วลืม revision = CI แดง

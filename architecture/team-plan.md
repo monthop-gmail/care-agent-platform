@@ -53,8 +53,9 @@ M2 ── Care Loop (ทีม B ขนานกับ ทีม C)
       DoD: reminder → ack → missed → escalate ครบวง มี scenario test
 
 M3 ── Escalation & Prep (A+B+C)
-      care_orchestrator · care_escalation · ap_approval · care_appt_prep · care_careplan
-      DoD: daily summary ส่งได้ · approval ค้างได้ตลอดกาลโดยไม่มี auto-approve
+      ✅ ap_approval · care_orchestrator (daily summary) · care_escalation · care_appt_prep
+      ⬜ care_careplan (คำสั่งหมอหลังพบแพทย์ → งานประจำที่เกิดซ้ำ)
+      DoD: ✅ daily summary ส่งได้ · ✅ approval ค้างได้ตลอดกาลโดยไม่มี auto-approve
 
 M4 ── Intelligence & Channels (C+E)
       ✅ LINE ของผู้ป่วย/ผู้ดูแล (care_line)
@@ -70,9 +71,10 @@ M6 ── Multi-organization (A+E)
 
 **เส้นทางวิกฤต:** M0 → M1 เท่านั้น ทุกทีมที่เหลือขนานกันได้หลัง M1 เพราะพึ่ง `ap_*` เหมือนกันหมด
 
-## สถานะปัจจุบัน (2026-08-18)
+## สถานะปัจจุบัน (2026-08-19)
 
-**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 32 เทสผ่าน, drift check ผ่าน
+**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 85 เทสผ่านทั้ง sqlite และ Postgres,
+conformance ครบ 5 ตัว (drift · payload · migration · db_role · rls)
 
 | addon | สถานะ |
 |---|---|
@@ -87,7 +89,9 @@ M6 ── Multi-organization (A+E)
 | `care_appointment` | ✅ นัดหมาย + reminder ล่วงหน้า + **preparation checklist** + visit brief + บันทึกผลหลังพบหมอ |
 | `care_orientation` | ✅ 5 ชั้น (เวลา/วันที่/สถานที่/คน/แผน) + daily brief + temporal memory ("พรุ่งนี้") |
 | `care_line` | ✅ ช่องทางจริงของผู้ป่วย — จับคู่บัญชี, ส่ง reminder ออก LINE, รับคำตอบกลับแบบ deterministic ([ADR-0008](../decisions/0008-patient-channel-is-deterministic.md)) |
-| `ap_approval` · `care_careplan` · `care_activity` · `care_inventory` · `care_home` · `care_safety` · `care_orchestrator` | ⬜ ยังไม่เริ่ม |
+| `ap_approval` | ✅ คิวรออนุมัติตาม `approval/v1` — decision immutable, ไม่มี auto-approve, ผู้ยื่นตัดสินเองไม่ได้ ([ADR-0009](../decisions/0009-approval-waits-forever.md)) |
+| `care_orchestrator` | ✅ รอบวัน — สรุปประจำวันถึงผู้ดูแลตามเวลาท้องถิ่นของผู้ป่วย (ข้อเท็จจริงล้วน) + ปิดคำขอที่เลยกำหนด |
+| `care_careplan` · `care_activity` · `care_inventory` · `care_home` · `care_safety` | ⬜ ยังไม่เริ่ม |
 
 > **หมายเหตุ:** `care_appt_prep` ที่เคยวางไว้แยก ถูกรวมเข้า `care_appointment` แล้ว
 > เพราะ `contracts/appointment/v1` นิยาม `PreparationStep` เป็นส่วนหนึ่งของนัดหมาย
@@ -104,10 +108,13 @@ M6 ── Multi-organization (A+E)
    (M4) · `care_line/services.py` ส่งออกผ่าน `line_client.respond()` จริงแล้ว
 5. ✅ ~~ตั้ง ARQ worker ให้เรียก `care_tick` เป็นระยะ~~ — เสร็จ 2026-08-18,
    `care_tick` เป็น `@periodic_job(minute=set(range(60)))` และ service `worker` ใน compose
-   รัน `python -m arq core.worker.WorkerSettings`
-6. 🔴 **adopt `tenancy` ของ kernel** ([pstack#9](https://github.com/willpower-institute/pstack/pull/9)
-   รอเรา adopt ก่อนเขา tag v0.3.0) — แผนผ่า `ap_tenancy` อยู่ที่ [#1](https://github.com/monthop-gmail/care-agent-platform/issues/1)
-   · ข้อ 1 (role ที่ไม่ใช่ superuser) แยกเป็น PR ต่างหากเพราะต้องเสร็จก่อน adopt
+   รัน `python -m arq core.worker.WorkerSettings` · ตั้งแต่ M3 มี `care_daily_tick`
+   (ทุก 15 นาที) เดินรอบวัน: สรุปประจำวัน + ปิดคำขออนุมัติที่เลยกำหนด
+6. ✅ ~~adopt `tenancy` ของ kernel~~ — เสร็จ 2026-08-19 (pstack v0.3.1)
+   `ap_tenancy` เหลือเป็น shim ที่ re-export ของ kernel · `ap_consent` แยกออกมาเป็นโมดูลของตัวเอง
+   · role แอปเป็น `NOSUPERUSER NOBYPASSRLS` · RLS เปิดครบ 15 ตาราง (`conformance/rls_check.py`)
+7. 🟡 **รอบสองของการ adopt** — ย้าย import ที่ยังเรียกผ่าน `ap_tenancy` ไปที่ `core.tenancy` ตรง ๆ
+   แล้วลบ shim + `DROP TABLE alembic_version_ap_tenancy` (งานกวาดล้าง ไม่บล็อกอะไร)
 
 ## ของที่รอฝั่ง pstack
 
@@ -186,6 +193,8 @@ S7  ถาม "กินยาแล้วยัง" โดยไม่มีห
 S8  caregiver ของ tenant อื่นพยายามอ่าน     → ถูกปฏิเสธที่ชั้น tenancy
 S9  agent พยายามแก้ medication เอง          → ถูก policy ปฏิเสธ (human_command_required)
 S10 ซื้ออาหารซ้ำทั้งที่ของยังไม่หมดอายุ       → เตือนว่ามีอยู่แล้ว (ไม่ห้ามซื้อ)
+S11 agent เสนอยา แล้วไม่มีใครกดอนุมัติ      → ค้างในคิวตลอดกาล ยาไม่เปลี่ยน ห้าม auto-approve
+S12 สองทุ่มตามเวลาบ้านผู้ป่วย                → ผู้ดูแลได้สรุปข้อเท็จจริงของวัน วันละครั้ง
 ```
 
 Adversarial tests ที่ blueprint สั่งไว้: LLM hallucination · wrong patient · wrong medication ·

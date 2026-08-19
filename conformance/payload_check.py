@@ -38,8 +38,8 @@ os.environ.setdefault("PSTACK_DATABASE_URL", f"sqlite+aiosqlite:///{CHECK_DB}")
 os.environ.setdefault("PSTACK_SECRET_KEY", "payload-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
-    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,care_patient,care_escalation,care_routine,"
-    "care_medication,care_journal,care_appointment,care_orientation",
+    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,care_routine,"
+    "care_medication,care_journal,care_appointment,care_orientation,care_orchestrator",
 )
 
 # schema ที่ต้องมีใน registry เพื่อ resolve $ref ระหว่างไฟล์
@@ -51,6 +51,7 @@ SCHEMA_FILES = [
     "error/v1/error.schema.yaml",
     "model/v1/inference.schema.yaml",
     "consent/v1/consent.schema.yaml",
+    "approval/v1/approval.schema.yaml",
 ]
 
 # attribute ของโดเมนที่ care-event.schema.yaml บังคับให้อยู่ระดับบนสุด
@@ -116,6 +117,8 @@ async def run_scenario() -> tuple[list, list, list]:
     from core.tenancy import bind_tenant
     from sqlalchemy import select
 
+    from care_addons.ap_approval import services as approvals
+    from care_addons.ap_approval.models import ApApproval
     from care_addons.ap_audit.models import ApAuditEvent
     from care_addons.ap_consent.models import ApConsentGrant
     from care_addons.ap_policy.engine import evaluate
@@ -231,6 +234,31 @@ async def run_scenario() -> tuple[list, list, list]:
                     confirmed_by=tenancy.Principal(type="human", id="user-1"),
                 )
 
+            # agent เสนอยาอีกตัว แล้วคนกดอนุมัติ → ได้ใบอนุมัติจริงตาม approval/v1
+            agent_scope = tenancy.TenantScope(
+                tenant_id=tenant_id,
+                principal=tenancy.Principal(type="agent", id="care-agent"),
+            )
+            await tenancy.grant_consent(
+                session, admin, subject_id=patient.patient_id,
+                grantee=tenancy.Principal(type="agent", id="care-agent"),
+                scopes=["care.manage"],
+                granted_by=tenancy.Principal(type="human", id="user-1"),
+                authority_basis="ผู้ดูแลหลักมอบหมาย",
+            )
+            await medications.propose_version(
+                session, agent_scope, patient_id=patient.patient_id, name="Med Y",
+                schedule=[{"time": "20:00", "relation_to_meal": "bedtime", "dose": "1 เม็ด"}],
+                instruction_source="doctor_instruction",
+                prescribed_by={"doctor_name": "หมอ C"},
+            )
+            for request in await approvals.pending_requests(session, admin):
+                await approvals.decide(
+                    session, admin, request_id=request.request_id,
+                    decision="APPROVE", reason="ยืนยันตามที่หมอสั่งแล้ว",
+                    authority={"type": "human", "id": "user-2", "display_name": "ลูกสาว"},
+                )
+
             appointment = await appointments.create_appointment(
                 session, admin, patient_id=patient.patient_id,
                 starts_at=clock.set("2026-08-19T00:30:00+00:00") + timedelta(days=1),
@@ -272,6 +300,7 @@ async def run_scenario() -> tuple[list, list, list]:
             grants = list(
                 (await session.execute(select(ApConsentGrant))).scalars()
             )
+            approval_rows = list((await session.execute(select(ApApproval))).scalars())
 
     decisions = [
         evaluate(capability)
@@ -283,7 +312,7 @@ async def run_scenario() -> tuple[list, list, list]:
     await dispose_engine()
     if url.startswith("sqlite"):
         CHECK_DB.unlink(missing_ok=True)
-    return events, decisions, grants
+    return events, decisions, grants, approval_rows
 
 
 def main() -> int:
@@ -293,10 +322,11 @@ def main() -> int:
     pinned = load_pinned()
     schemas = fetch_schemas(pinned, offline=offline)
 
+    from care_addons.ap_approval.services import as_approval
     from care_addons.ap_audit.services import as_platform_event
     from care_addons.ap_consent.services import as_consent_grant
 
-    events, decisions, grants = asyncio.run(run_scenario())
+    events, decisions, grants, approvals_made = asyncio.run(run_scenario())
     if not events:
         print("✗ scenario ไม่ได้ผลิต event เลย — เช็คว่า scenario ยังทำงานอยู่")
         return 1
@@ -342,6 +372,17 @@ def main() -> int:
                 f"consent/v1 · {grant.grant_id}: {error.json_path} — {error.message}"
             )
 
+    approval_validator = build_validator(
+        schemas, schemas[f"{PLATFORM_HOST}approval/v1/approval.schema.yaml"]
+    )
+    for row in approvals_made:
+        payload = as_approval(row)
+        for error in approval_validator.iter_errors(payload):
+            failures.append(
+                f"approval/v1 · {row.decision} ({row.approval_id}): "
+                f"{error.json_path} — {error.message}"
+            )
+
     for decision in decisions:
         payload = {
             **decision.as_policy_result(),
@@ -360,7 +401,8 @@ def main() -> int:
 
     print(
         f"✓ payload conformance ผ่าน — {len(events)} audit event (care event {care_count}) "
-        f"+ {len(grants)} consent grant + {len(decisions)} policy decision "
+        f"+ {len(grants)} consent grant + {len(approvals_made)} approval "
+        f"+ {len(decisions)} policy decision "
         f"validate กับ agent-platform @ {pinned['commit'][:8]}"
     )
     return 0
