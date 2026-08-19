@@ -24,6 +24,9 @@ Contract ของ **โดเมนนี้** เท่านั้น — YAM
 | [`journal/v1`](journal/v1) | ทีม C | M2 |
 | [`careplan/v1`](careplan/v1) | ทีม C | M3 |
 | [`activity/v1`](activity/v1) | ทีม D | M5 |
+| [`inventory/v1`](inventory/v1) | ทีม D | M5 |
+| [`home/v1`](home/v1) | ทีม D | M5 |
+| [`safety/v1`](safety/v1) | ทีม D | M5 |
 | [`escalation/v1`](escalation/v1) | ทีม A+B | M3 |
 
 ## เวอร์ชันของ agent-platform ที่ pin

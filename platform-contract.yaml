@@ -74,6 +74,13 @@ extensions:
     detail: >-
       contract ของโดเมนเราเอง (ไม่ได้ขอให้ platform รับไปดูแล) — payload_check
       validate แถวจริงในตาราง `care_careplan_task` กับ schema นี้ทุกครั้งที่รัน CI
+  - id: daily-living/v1
+    path: contracts/{activity,inventory,home,safety}/v1/
+    extends: null
+    detail: >-
+      contract ของ M5 — งานหลายขั้นตอน · ของที่บ้าน · ของใช้ประจำตัว · สัญญาณความปลอดภัย
+      payload_check validate แถวจริงของทั้งสี่ตัว · `safety/v1` เป็น **ทางเข้าของ external event**
+      ที่ต้องคง `source` ไว้ตลอดไปตาม event/v1
 
 # ช่องว่างที่เจอจากการ implement จริง
 gaps: []

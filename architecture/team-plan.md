@@ -26,7 +26,7 @@ care_addons/
 ├── care_activity/    ทีม D   task continuity หลายขั้นตอน (ซักผ้า ทำอาหาร)
 ├── care_inventory/   ทีม D   ของกิน/ของใช้ + วันหมดอายุ + กันซื้อซ้ำ
 ├── care_home/        ทีม D   เสื้อผ้า/ของใช้ประจำตัว (cognitive offloading)
-├── care_safety/      ทีม D   sensor/IoT/GPS intake (M5)
+├── care_safety/      ทีม D   sensor/IoT/GPS intake
 │
 ├── care_orchestrator/  A+B   จัดลำดับ event → context → policy → agent → verify
 └── care_escalation/    A+B   retry policy, caregiver notification, daily summary
@@ -62,7 +62,9 @@ M4 ── Intelligence & Channels (C+E)
       DoD: ถามอะไรที่ไม่มีหลักฐาน ต้องตอบว่าไม่มีข้อมูล (มี adversarial test) — ผ่านแล้วสำหรับ LINE
 
 M5 ── Daily Living & Safety (D)
-      care_activity · care_inventory · care_home · care_safety + IoT/wearable connector
+      ✅ care_activity · care_inventory · care_home · care_safety (ทางเข้าของ IoT/wearable)
+      DoD: ✅ เครื่องเสร็จ ≠ งานเสร็จ · ✅ เตือนว่ามีอยู่แล้วโดยไม่ห้ามซื้อ
+           ✅ ไม่แน่ใจ = unknown ไม่ใช่การเดา · ✅ สัญญาณที่ไม่มั่นใจไม่ปลุกคน
 
 M6 ── Multi-organization (A+E)
       clinic/hospital/pharmacy connector · care plan ข้ามองค์กร · compliance hardening
@@ -72,7 +74,7 @@ M6 ── Multi-organization (A+E)
 
 ## สถานะปัจจุบัน (2026-08-19)
 
-**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 99 เทสผ่านทั้ง sqlite และ Postgres,
+**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 118 เทสผ่านทั้ง sqlite และ Postgres,
 conformance ครบ 5 ตัว (drift · payload · migration · db_role · rls)
 
 | addon | สถานะ |
@@ -91,7 +93,10 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
 | `ap_approval` | ✅ คิวรออนุมัติตาม `approval/v1` — decision immutable, ไม่มี auto-approve, ผู้ยื่นตัดสินเองไม่ได้ ([ADR-0009](../decisions/0009-approval-waits-forever.md)) |
 | `care_orchestrator` | ✅ รอบวัน — สร้างงานประจำวันให้ทุกคนเอง + สรุปประจำวันตามเวลาท้องถิ่นของผู้ป่วย + ปิดคำขอที่เลยกำหนด |
 | `care_careplan` | ✅ คำสั่งหลังพบหมอ → งานที่เกิดซ้ำจริง — จดได้แค่ proposed ต้องมีคนยืนยัน · adherence ไม่มีบันทึกตอบว่า "ข้อมูลไม่พอ" ไม่ใช่ 0% |
-| `care_activity` · `care_inventory` · `care_home` · `care_safety` | ⬜ ยังไม่เริ่ม |
+| `care_activity` | ✅ งานหลายขั้นตอน — เครื่องซักเสร็จ ≠ งานเสร็จ · ขั้นที่ค้างเกินเวลาเรียกผู้ดูแลเอง |
+| `care_inventory` | ✅ ของที่บ้าน + วันหมดอายุ — เตือนว่ามีอยู่แล้ว **ไม่ห้ามซื้อ** · ไม่รู้วันหมดอายุตอบว่าไม่รู้ |
+| `care_home` | ✅ ของใช้ประจำตัว/เสื้อผ้า — AI ห้ามเดาสถานะ · "จำไม่ได้" นำไปสู่ workflow ที่ปลอดภัย |
+| `care_safety` | ✅ ทางเข้าของ GPS/wearable/sensor — confidence ต่ำไม่ปลุกคน · สัญญาณซ้ำไม่ปลุกซ้ำ · ไม่มีสัญญาณ ≠ ปลอดภัย |
 
 > **หมายเหตุ:** `care_appt_prep` ที่เคยวางไว้แยก ถูกรวมเข้า `care_appointment` แล้ว
 > เพราะ `contracts/appointment/v1` นิยาม `PreparationStep` เป็นส่วนหนึ่งของนัดหมาย
@@ -196,11 +201,18 @@ S10 ซื้ออาหารซ้ำทั้งที่ของยัง�
 S11 agent เสนอยา แล้วไม่มีใครกดอนุมัติ      → ค้างในคิวตลอดกาล ยาไม่เปลี่ยน ห้าม auto-approve
 S12 สองทุ่มตามเวลาบ้านผู้ป่วย                → ผู้ดูแลได้สรุปข้อเท็จจริงของวัน วันละครั้ง
 S13 หมอสั่ง "เดินวันละ 20 นาที"             → จด → เข้าคิว → คนยืนยัน → เกิดเป็นงานจริงทุกวัน
+S14 "ชุดนี้ใส่แล้วหรือยัง" — จำไม่ได้        → ใส่ตะกร้าผ้าใช้แล้วก่อน (ไม่เดาว่าสะอาด)
+S15 wearable แจ้งว่าอาจล้ม (มั่นใจ 93%)     → ปลุกทุกคน · ถ้ามั่นใจ 35% บันทึกไว้แต่ไม่ปลุก
 ```
 
 Adversarial tests ที่ blueprint สั่งไว้: LLM hallucination · wrong patient · wrong medication ·
 duplicate reminder · stale memory · unauthorized access · cross-tenant access · false safety alert ·
 agent loop · notification storm
+
+ที่มีเทสบังคับแล้ว: wrong patient/cross-tenant (`test_tenant_isolation`) · unauthorized access
+(consent + RLS) · wrong medication (S4 conflict) · duplicate reminder + notification storm
+(aggregation window · dedup ของสัญญาณ · `stalled_reported_at`) · stale memory (S3, S7) ·
+**false safety alert** (`min_confidence_to_escalate` — S15)
 
 ## Working agreement
 

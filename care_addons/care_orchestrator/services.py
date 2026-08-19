@@ -136,6 +136,22 @@ async def build_facts(
         if _utc(j.due_at) <= now() and j.closed_at is None
     ]
 
+    from care_addons.care_safety import services as safety
+
+    # 🔒 รายงานเฉพาะ "สัญญาณที่ได้รับ" — ไม่มีบรรทัดไหนบอกว่า "ที่เหลือปลอดภัย"
+    #    อุปกรณ์ที่เงียบเพราะแบตหมดกับบ้านที่ปลอดภัยจริง หน้าตาเหมือนกันในข้อมูลของเรา
+    signals = [
+        {
+            "kind": e.kind,
+            "severity": e.severity,
+            "state": e.state,
+            "observed_at": _utc(e.observed_at).isoformat(),
+            "repeat_count": e.repeat_count,
+            "source": (e.source or {}).get("system"),
+        }
+        for e in await safety.open_events(session, scope, patient.patient_id)
+    ]
+
     waiting = [
         {
             "request_id": r.request_id,
@@ -151,6 +167,7 @@ async def build_facts(
         "timezone": patient.timezone,
         "buckets": buckets,
         "stalled_tasks": stalled,
+        "safety_signals": signals,
         "awaiting_decision": waiting,
         "counted_jobs": len(jobs),
     }
@@ -177,6 +194,11 @@ def render(patient: CarePatient, facts: dict) -> str:
     stalled = facts.get("stalled_tasks") or []
     if stalled:
         lines.append(f"· ค้างอยู่ {len(stalled)} รายการ: " + ", ".join(s["label"] for s in stalled[:5]))
+
+    signals = facts.get("safety_signals") or []
+    if signals:
+        kinds = ", ".join(sorted({s["kind"] for s in signals}))
+        lines.append(f"· สัญญาณความปลอดภัยที่ยังไม่ปิด {len(signals)} รายการ: {kinds}")
 
     waiting = facts.get("awaiting_decision") or []
     if waiting:
@@ -335,8 +357,14 @@ async def materialize_today(session: AsyncSession, scope: TenantScope) -> dict:
 
 
 async def run_cycle(session: AsyncSession, scope: TenantScope) -> dict:
-    """รอบเดียวของ orchestrator: สร้างงานของวัน → ส่งสรุปที่ถึงเวลา → ปิดคำขอที่เลยกำหนด"""
+    """รอบเดียวของ orchestrator
+
+    สร้างงานของวัน → หางานหลายขั้นตอนที่ค้าง → ส่งสรุปที่ถึงเวลา → ปิดคำขอที่เลยกำหนด
+    """
+    from care_addons.care_activity import services as activities
+
     result = await materialize_today(session, scope)
+    result["stalled_steps"] = await activities.sweep_stalled(session, scope)
     result.update(await run_daily_summaries(session, scope))
     return result
 

@@ -50,6 +50,10 @@ capabilities:
   careplan.task.activate:       { action_risk: high }
   activity.step.record:         { action_risk: medium }
   inventory.item.write:         { action_risk: medium }
+  home.item.write:              { action_risk: medium }   # สถานะของใช้ประจำตัว
+  # 🔒 การ "รับสัญญาณ" เข้าระบบเป็น low — มันคือการบันทึกสิ่งที่วัดได้ ไม่ใช่การลงมือทำ
+  #    สิ่งที่เสี่ยงคือการ **ปลุกคน** ซึ่งใช้ emergency.escalate/caregiver.notify อยู่แล้ว
+  safety.signal.intake:         { action_risk: low }
 
   medication.reminder.send:     { action_risk: low }
   medication.regimen.propose:   { action_risk: medium }

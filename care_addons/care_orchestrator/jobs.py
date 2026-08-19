@@ -32,6 +32,7 @@ async def care_daily_tick(ctx: Any) -> dict:
         "routine_jobs": 0,
         "careplan_jobs": 0,
         "skipped_no_consent": 0,
+        "stalled_steps": 0,
         "summaries": 0,
         "expired_approvals": 0,
     }

@@ -27,6 +27,26 @@ aggregation:
   window_minutes: 30
   group_by: [patient_id, severity]
 
+safety:
+  # 🔒 สัญญาณที่อุปกรณ์เองยังไม่มั่นใจ ห้ามปลุกคนทั้งบ้าน — แต่ต้องบันทึกไว้เสมอ
+  #    false safety alert อยู่ในรายการ adversarial test ของ blueprint ด้วยเหตุผลนี้
+  #    อุปกรณ์ที่ปลุกผิดบ่อย ๆ จะถูกปิด แล้วครั้งที่จริงจะไม่มีใครฟัง
+  min_confidence_to_escalate: 0.7
+  # สัญญาณเดิมของผู้ป่วยคนเดิมในหน้าต่างนี้ = เหตุการณ์เดียว (กัน notification storm)
+  dedup_window_minutes: 15
+  # ความเร่งด่วนต่อชนิดของสัญญาณ — 🔒 ไม่ใช่ความรุนแรงของอาการ (care-event $defs.Severity)
+  severity_by_kind:
+    fall_suspected: critical
+    no_response: critical
+    stove_left_on: critical
+    outside_safe_area: high
+    not_returned_home: high
+    left_home_unexpectedly: high
+    door_left_open: medium
+    long_time_in_bathroom: medium
+    device_offline: low
+    other: medium
+
 daily_summary:
   send_at: "20:00"
   include: [meals, medication, activities, appointments, safety, stalled_tasks]
