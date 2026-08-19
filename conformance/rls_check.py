@@ -36,19 +36,22 @@ for candidate in (ROOT / "pstack_src", ROOT.parent / "pstack"):
 os.environ.setdefault("PSTACK_SECRET_KEY", "rls-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
-    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,care_patient,care_escalation,"
-    "care_routine,care_medication,care_journal,care_appointment,care_orientation",
+    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"
+    "care_routine,care_medication,care_journal,care_appointment,care_orientation,care_orchestrator",
 )
 
 # ตารางข้อมูลโดเมนที่ต้องมี RLS — เพิ่มตารางใหม่ที่มี tenant_id ต้องมาเพิ่มที่นี่ด้วย
 PROTECTED = [
     "ap_audit_event",
     "ap_consent_grant",
+    "ap_approval_request",
+    "ap_approval",
     "care_patient",
     "care_caregiver",
     "care_team_member",
     "care_job",
     "care_notification",
+    "care_daily_summary",
     "care_routine_item",
     "care_medication_version",
     "care_journal_entry",

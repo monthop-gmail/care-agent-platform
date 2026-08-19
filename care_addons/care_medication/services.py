@@ -16,7 +16,9 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from care_addons.ap_approval import services as approvals
 from care_addons.ap_audit import services as audit
+from care_addons.ap_policy.engine import evaluate
 from care_addons.ap_policy.services import care_action
 from care_addons.ap_tenancy.clock import now
 from care_addons.ap_tenancy.ids import new_id
@@ -120,6 +122,30 @@ async def propose_version(
             "instruction_source": instruction_source,
         },
     )
+
+    # ── ข้อเสนอเข้าคิวรอคน ────────────────────────────────────────────────────
+    # ถ้าผู้ดูแลอยู่ตรงนั้นตอนนี้ กดยืนยันผ่าน API ได้เลย · ถ้าไม่อยู่ ข้อเสนอไม่หายไปไหน
+    # และ **ไม่มีวันกลายเป็นคำสั่งจริงเองเพราะเวลาผ่านไป** — ap_approval ไม่มี auto-approve
+    # และคำขอที่หมดอายุกลายเป็น expired (ยาไม่ถูกเปลี่ยน) ไม่ใช่ approved
+    await approvals.request_approval(
+        session,
+        scope,
+        decision=evaluate("medication.regimen.write"),
+        subject_type="artifact",
+        subject_id=version.version_id,
+        summary=f"ยืนยันคำสั่งใช้ยา '{name}' ของผู้ป่วย {patient_id}",
+        proposed={
+            "medication_id": version.medication_id,
+            "name": name,
+            "route": route,
+            "schedule": version.schedule,
+            "instruction_source": instruction_source,
+            "prescribed_by": prescribed_by,
+            "reason": reason,
+        },
+        requested_by=scope.principal.as_dict(),
+        correlation_id=scope.correlation_id,
+    )
     return version
 
 
@@ -184,8 +210,42 @@ async def confirm_version(
             "superseded": [v.version_id for v in previous],
         },
     )
+    # คนกดยืนยันตรง ๆ = เรื่องจบไปทางอื่นแล้ว คำขอที่ค้างอยู่ไม่ต้องตัดสินซ้ำ
+    # 🔒 withdrawn ไม่ใช่ approved — path นี้ไม่แตะตาราง ap_approval เลย
+    for pending in await approvals.pending_for_subject(
+        session, scope, subject_type="artifact", subject_id=version.version_id
+    ):
+        await approvals.withdraw(
+            session,
+            scope,
+            request_id=pending.request_id,
+            reason="ยืนยันโดยตรงโดยผู้ดูแลที่มีอำนาจแล้ว",
+            by=confirmed_by.as_dict(),
+        )
+
     await detect_conflicts(session, scope, version.patient_id)
     return version
+
+
+async def _apply_approved_regimen(session, scope, request, approval) -> None:
+    """อนุมัติแล้ว = คนสั่งจริง → ทำให้ version นั้นเป็นคำสั่งที่ active
+
+    `confirmed_by` คือคนที่กดอนุมัติ ไม่ใช่ agent ที่ยื่นข้อเสนอ — ประวัติยาจึงชี้ตัวคนได้เสมอ
+    """
+    await confirm_version(
+        session,
+        scope,
+        request.subject_id,
+        confirmed_by=Principal(
+            type=approval.authority["type"],
+            id=approval.authority["id"],
+            display_name=approval.authority.get("display_name", ""),
+        ),
+    )
+
+
+# โดเมนเป็นคนบอกเองว่า "อนุมัติ capability นี้แล้วเกิดอะไร" — ap_approval ไม่รู้จักคำว่ายา
+approvals.register_applier("medication.regimen.write", _apply_approved_regimen)
 
 
 @care_action("medication.regimen.stop", autonomous=False)

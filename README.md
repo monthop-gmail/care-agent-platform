@@ -242,6 +242,7 @@ repo นี้ประกาศตัวเป็น consumer ผ่าน [`pl
 3. **Observation ≠ Diagnosis** — schema ห้ามมี field ที่แปลผลทางการแพทย์ ([ADR-0004](decisions/0004-care-event-vocabulary.md))
 4. **Personal Memory ≠ Medical Truth** — ทุกข้อมูลสำคัญมี `source` + `version` ([ADR-0005](decisions/0005-medication-versioning.md))
 5. **High-risk ต้องมี governance** — ยาเป็น `human_command_required` เสมอ แก้ config ให้หลวมกว่านี้ไม่ได้
+   · สิ่งที่รอคนตัดสินรอได้ตลอดกาล **เวลาที่ผ่านไปไม่เคยอนุมัติอะไรให้** ([ADR-0009](decisions/0009-approval-waits-forever.md))
 6. **ทุก action ต้อง audit ได้** — append-only ตอบได้ว่า "ทำไม agent ถึงส่งข้อความนี้"
 7. **Data ต้อง tenant/consent aware** — RBAC อย่างเดียวไม่พอ ([ADR-0007](decisions/0007-consent-and-data-access.md))
 

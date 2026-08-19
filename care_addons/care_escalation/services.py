@@ -243,14 +243,21 @@ async def _send(
     )
     session.add(notification)
     await session.flush()
-    await _deliver(session, scope, job, notification)
+    await _deliver(session, scope, notification, job=job)
     return notification
 
 
 async def _deliver(
-    session: AsyncSession, scope: TenantScope, job: CareJob, notification: CareNotification
+    session: AsyncSession,
+    scope: TenantScope,
+    notification: CareNotification,
+    *,
+    job: CareJob | None = None,
 ) -> None:
-    """ส่งออกช่องทางจริง — ล้มเหลวต้องเห็นได้ ไม่ใช่หายเงียบ"""
+    """ส่งออกช่องทางจริง — ล้มเหลวต้องเห็นได้ ไม่ใช่หายเงียบ
+
+    `job=None` คือข้อความที่ไม่ได้ผูกกับงานใดงานหนึ่ง เช่นสรุปประจำวัน
+    """
     sender = sender_for(notification.channel)
     if sender is None:
         notification.delivery_status = "stored"   # ไม่มีช่องทางจริง เก็บไว้ใน DB อย่างเดียว
@@ -269,12 +276,12 @@ async def _deliver(
     if not ok:
         await audit.emit(
             session,
-            _job_scope(scope, job),
+            _job_scope(scope, job) if job is not None else scope,
             event_type="EXECUTION_FAILED",
             subject_type="execution",
             subject_id=new_id("exec"),
-            job_id=job.care_job_id,
-            severity=job.severity,
+            job_id=job.care_job_id if job is not None else None,
+            severity=notification.severity,
             error=audit.make_error(
                 "care.notification.delivery_failed",
                 "external_dependency",
@@ -283,12 +290,68 @@ async def _deliver(
                 details={"channel": notification.channel},
             ),
             attributes={
-                "patient_id": job.patient_id,
+                "patient_id": notification.patient_id,
                 "channel": notification.channel,
                 "audience": notification.audience,
                 "target": notification.target_principal_id,
             },
         )
+
+
+async def send_to_caregivers(
+    session: AsyncSession,
+    scope: TenantScope,
+    *,
+    patient_id: str,
+    text: str,
+    capability: str,
+    severity: str = "low",
+    all_targets: bool = False,
+) -> list[CareNotification]:
+    """ส่งข้อความถึงผู้ดูแล โดยไม่ผูกกับ job ใด job หนึ่ง (เช่นสรุปประจำวัน)
+
+    ผ่าน policy เหมือนทุก action ที่แตะโลกจริง — ถ้า policy ไม่ให้ส่งเอง จะไม่ส่งและบันทึกเหตุผลไว้
+    ไม่ raise เพราะผู้เรียกเป็น job ที่วนหลายผู้ป่วย — คนเดียวส่งไม่ได้ต้องไม่ทำให้ที่เหลือหยุด
+    """
+    decision = evaluate(capability)
+    if not decision.may_act_now:
+        await audit.emit(
+            session,
+            scope,
+            event_type="EXECUTION_FAILED",
+            subject_type="execution",
+            subject_id=new_id("exec"),
+            policy_result=decision.as_policy_result(),
+            error=audit.make_error(
+                "care.policy.autonomous_send_denied",
+                "policy_denied",
+                f"policy ไม่อนุญาตให้ส่งเอง (capability {capability})",
+                retryable=False,
+            ),
+            attributes={"patient_id": patient_id, "capability": capability},
+        )
+        return []
+
+    team = await care_team(session, scope, patient_id)
+    targets = team if all_targets else team[:1]
+    sent: list[CareNotification] = []
+    for caregiver in targets:
+        notification = CareNotification(
+            tenant_id=scope.tenant_id,
+            patient_id=patient_id,
+            audience="caregiver",
+            target_principal_id=caregiver.principal_id,
+            channel=caregiver.channel,
+            text=text,
+            severity=severity,
+            correlation_id=scope.correlation_id,
+            sent_at=now(),
+        )
+        session.add(notification)
+        await session.flush()
+        await _deliver(session, scope, notification)
+        sent.append(notification)
+    return sent
 
 
 def _reminder_text(job: CareJob, attempt: int, ask_directly: bool) -> str:

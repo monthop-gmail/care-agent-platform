@@ -161,3 +161,63 @@ def test_policy_catalog_is_inspectable(client, care):
     assert by_name["medication.regimen.write"]["authority"] == "human_command_required"
     assert by_name["medication.regimen.write"]["agent_may_act_alone"] is False
     assert by_name["medication.reminder.send"]["agent_may_act_alone"] is True
+
+
+def test_approval_queue_over_http(client, care):
+    """คิวรออนุมัติเห็นได้จริงผ่าน API — และผู้ยื่นกดอนุมัติให้ตัวเองไม่ได้ (approval/v1)"""
+    headers, patient_id = care
+
+    proposed = client.post(
+        "/api/care/medications/propose",
+        headers=headers,
+        json={
+            "patient_id": patient_id,
+            "name": "Med Queue",
+            "schedule": [{"time": "21:00", "relation_to_meal": "bedtime", "dose": "1 tablet"}],
+            "instruction_source": "doctor_instruction",
+        },
+    )
+    assert proposed.status_code == 201, proposed.text
+    version_id = proposed.json()["version_id"]
+
+    queue = client.get("/api/platform/approvals", headers=headers).json()
+    waiting = [row for row in queue if row["subject"]["id"] == version_id]
+    assert len(waiting) == 1
+    assert waiting[0]["capability"] == "medication.regimen.write"
+    assert waiting[0]["authority_required"] == "human_command_required"
+    assert waiting[0]["expires_at"] is None      # รอได้ตลอดกาล (ADR-0009)
+
+    # 🔒 authority มาจาก session ของผู้ใช้ ส่งมาใน body ไม่ได้ — และคนที่ยื่นคือคนที่ล็อกอินอยู่
+    denied = client.post(
+        f"/api/platform/approvals/{waiting[0]['request_id']}/decide",
+        headers=headers,
+        json={"decision": "APPROVE", "reason": "อนุมัติเอง"},
+    )
+    assert denied.status_code == 422
+    assert "ตัวเอง" in denied.json()["detail"]
+
+    current = client.get(f"/api/care/medications/current?patient_id={patient_id}", headers=headers)
+    assert "Med Queue" not in [row["name"] for row in current.json()]
+
+    # กดยืนยันตรง ๆ = human command — คำขอออกจากคิวโดยไม่กลายเป็นใบอนุมัติ
+    confirmed = client.post(f"/api/care/medications/{version_id}/confirm", headers=headers)
+    assert confirmed.status_code == 200
+    after = client.get("/api/platform/approvals", headers=headers).json()
+    assert [row for row in after if row["subject"]["id"] == version_id] == []
+
+
+def test_daily_summary_over_http(client, care):
+    headers, patient_id = care
+
+    preview = client.get(f"/api/care/summary/{patient_id}", headers=headers)
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["summary_id"] is None            # ยังไม่ได้ส่ง = ยังไม่มีใบ
+    assert body["facts"]["local_date"] == body["local_date"]
+    assert "ไม่ได้ยืนยันไม่ได้แปลว่าไม่ได้ทำ" in body["text"]
+
+    sent = client.post(f"/api/care/summary/{patient_id}/send", headers=headers)
+    assert sent.status_code == 200, sent.text
+
+    again = client.post(f"/api/care/summary/{patient_id}/send", headers=headers)
+    assert again.status_code == 409              # วันละครั้ง

@@ -26,6 +26,7 @@ MODULES = [
     "ap_tenancy",
     "ap_audit",
     "ap_policy",
+    "ap_approval",
     "care_patient",
     "care_escalation",
     "care_routine",
@@ -33,6 +34,7 @@ MODULES = [
     "care_journal",
     "care_appointment",
     "care_orientation",
+    "care_orchestrator",
     "line_oa",
     "care_line",
 ]

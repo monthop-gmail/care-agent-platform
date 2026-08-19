@@ -13,6 +13,7 @@
 | [0006](0006-ai-has-no-medical-authority.md) | AI ไม่มี medical authority — บังคับผ่าน authority_map | Accepted |
 | [0007](0007-consent-and-data-access.md) | consent เป็นเงื่อนไขการเข้าถึง ไม่ใช่แค่ RBAC | Accepted |
 | [0008](0008-patient-channel-is-deterministic.md) | ช่องทางของผู้ป่วยตอบแบบ deterministic ไม่ผ่าน LLM | Accepted |
+| [0009](0009-approval-waits-forever.md) | คำขออนุมัติรอได้ตลอดกาล — เวลาไม่เคยอนุมัติอะไรให้ | Accepted |
 
 ## กติกา
 
