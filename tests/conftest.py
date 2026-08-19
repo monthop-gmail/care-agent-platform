@@ -132,7 +132,7 @@ async def use_tenant(session, tenant_id: str) -> None:
     บน Postgres ตารางโดเมนเปิด RLS ไว้ (care-agent-platform#4) — ไม่ตั้ง GUC = เห็น 0 แถว
     บน sqlite เป็น no-op · เทสที่ใช้หลาย tenant ต้องเรียกสลับเองก่อนแตะข้อมูลของแต่ละ tenant
     """
-    from care_addons.tenant_session import bind_tenant
+    from core.tenancy import bind_tenant
 
     await bind_tenant(session, tenant_id)
 

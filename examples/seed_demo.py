@@ -33,13 +33,13 @@ ROUTINES = [
 
 async def main() -> None:
     from core.db import dispose_engine, get_sessionmaker
+    from core.tenancy import bind_tenant
 
     from care_addons.ap_tenancy import services as tenancy
     from care_addons.care_journal import services as journal
     from care_addons.care_medication import services as meds
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
-    from care_addons.tenant_session import bind_tenant
 
     scope = tenancy.TenantScope(
         tenant_id=TENANT,

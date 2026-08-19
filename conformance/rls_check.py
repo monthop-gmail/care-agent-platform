@@ -67,11 +67,10 @@ async def main() -> int:
     from core.db import dispose_engine, get_engine, get_sessionmaker
     from core.registry import create_core_tables, sync_modules
     from core.runtime import ctx
-    from core.tenancy import Principal, TenantScope
+    from core.tenancy import Principal, TenantScope, bind_tenant, unbind_tenant
 
     from care_addons.ap_tenancy import services as tenancy
     from care_addons.care_patient import services as patients
-    from care_addons.tenant_session import bind_tenant, unbind_tenant
 
     logging.getLogger().setLevel(logging.WARNING)
     url = os.environ.get("PSTACK_DATABASE_URL", "")
@@ -139,7 +138,7 @@ async def main() -> int:
                 f"query ดิบใน scope ของ t-rls-a เห็น {sorted(seen)} — ต้องเห็นเฉพาะ {made['t-rls-a']}"
             )
 
-        unbind_tenant(session)
+        await unbind_tenant(session)
         await session.commit()   # ปิด transaction เดิม (GUC ติดอยู่กับ transaction นั้น)
         no_scope = (await session.execute(raw)).all()
         if no_scope:
