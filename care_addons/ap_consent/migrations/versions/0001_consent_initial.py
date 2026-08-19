@@ -30,10 +30,32 @@ depends_on = None
 
 TABLE = "ap_consent_grant"
 
+# ตารางเดิมเคยมี FK ไป ap_tenant (ตอน consent ยังอยู่ใน ap_tenancy ข้าง ๆ ตาราง tenant)
+# หลัง rename ตาราง FK นั้นจะชี้ไป `tenant` ของ kernel พร้อม ondelete CASCADE ติดมาด้วย
+# ขณะที่ deploy ใหม่ไม่มี FK → พฤติกรรมตอนลบ tenant จะต่างกันระหว่าง fresh กับ adopt
+LEGACY_FK_TARGETS = {"tenant", "ap_tenant"}
+
+
+def _drop_legacy_tenant_fk(insp) -> None:
+    """ทำให้ deployment ที่ adopt เท่ากับ deploy ใหม่ — ไม่มี FK ไปตารางของ kernel
+
+    ไม่มีตารางโดเมนไหนใน repo นี้ผูก FK กับ tenant เลย (ทุกตัวถือ tenant_id เป็น string เฉย ๆ)
+    consent มี FK ติดมาเพราะเคยอยู่ในโมดูลเดียวกับตาราง tenant เท่านั้น — และการผูก FK
+    ข้ามโมดูลไปหาตารางที่ **kernel เป็นเจ้าของ** ทำให้ลำดับการติดตั้ง/ถอนโมดูลผูกกันโดยไม่จำเป็น
+    """
+    if op.get_bind().dialect.name != "postgresql":
+        return  # sqlite ไม่มี adopt path จริง และ drop constraint ไม่ได้ตรง ๆ อยู่แล้ว
+    for fk in insp.get_foreign_keys(TABLE):
+        if fk.get("referred_table") in LEGACY_FK_TARGETS and fk.get("name"):
+            op.drop_constraint(fk["name"], TABLE, type_="foreignkey")
+
 
 def upgrade() -> None:
-    if sa.inspect(op.get_bind()).has_table(TABLE):
-        return  # adopt: ตารางมาจาก ap_tenancy เดิม — ไม่แตะ ปล่อยให้ alembic บันทึก revision
+    insp = sa.inspect(op.get_bind())
+    if insp.has_table(TABLE):
+        # adopt: ตารางมาจาก ap_tenancy เดิม — ไม่สร้างใหม่ แต่ต้องเก็บ FK ที่ตกค้างให้เท่ากับ fresh
+        _drop_legacy_tenant_fk(insp)
+        return
 
     op.create_table(
         TABLE,
