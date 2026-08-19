@@ -2,7 +2,7 @@
 
 | ส่วน | ใช้ | มาจากไหน |
 |---|---|---|
-| Runtime / kernel | [pstack](https://github.com/willpower-institute/pstack) `v0.2.2` (MIT) pin tag | [ADR-0002](../decisions/0002-runtime-on-pstack.md) |
+| Runtime / kernel | [pstack](https://github.com/willpower-institute/pstack) `v0.3.0` (MIT) pin tag | [ADR-0002](../decisions/0002-runtime-on-pstack.md) |
 | Web | FastAPI + Pydantic v2 | pstack |
 | ORM | SQLAlchemy 2.0 (async) + Alembic ต่อโมดูล | pstack |
 | Database | PostgreSQL (test รันบน sqlite ได้) | pstack |

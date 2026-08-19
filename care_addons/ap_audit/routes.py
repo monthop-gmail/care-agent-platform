@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from addons.tenancy.deps import ScopeDep, SessionDep
 from fastapi import APIRouter
 
 from care_addons.ap_audit import services as svc
 from care_addons.ap_audit.models import ApAuditEvent
-from care_addons.ap_tenancy.deps import ScopeDep, SessionDep
 
 router = APIRouter(prefix="/api/platform/audit", tags=["platform: audit"])
 

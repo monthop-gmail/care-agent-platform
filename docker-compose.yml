@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        PSTACK_REF: ${PSTACK_REF:-v0.2.2}
+        PSTACK_REF: ${PSTACK_REF:-v0.3.0}
     restart: unless-stopped
     env_file: .env
     ports:
@@ -25,7 +25,7 @@ services:
     build:
       context: .
       args:
-        PSTACK_REF: ${PSTACK_REF:-v0.2.2}
+        PSTACK_REF: ${PSTACK_REF:-v0.3.0}
     restart: unless-stopped
     # `python -m arq` ไม่ใช่ `arq` — console script ไม่มี CWD ใน sys.path จึงไป import
     # pstack ที่ติดตั้งใน site-packages ซึ่งไม่มี addons ย่อย แล้วพังด้วย

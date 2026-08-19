@@ -32,7 +32,7 @@ os.environ.setdefault("PSTACK_DATABASE_URL", f"sqlite+aiosqlite:///{CHECK_DB}")
 os.environ.setdefault("PSTACK_SECRET_KEY", "migration-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
-    "users,ap_tenancy,ap_audit,ap_policy,care_patient,care_escalation,"
+    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,care_patient,care_escalation,"
     "care_routine,care_medication,care_journal,care_appointment,care_orientation,"
     "line_oa,care_line",
 )

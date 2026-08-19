@@ -1,18 +1,26 @@
+"""shim — endpoint เดิมของเรา ชี้ไปที่ service ของ kernel
+
+kernel มี `/api/tenancy/...` ของตัวเองแล้ว แต่ client ของเรา (เทส · seed · เอกสาร)
+ใช้ `/api/platform/...` อยู่ — เก็บ path เดิมไว้หนึ่งรอบตาม ADR-0003
+รอบที่ 2 ให้ย้าย client ไป `/api/tenancy` แล้วลบไฟล์นี้
+
+consent ย้ายไป `ap_consent` แล้ว (path `/api/platform/consents` เหมือนเดิม)
+"""
+
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Annotated, Any
 
+from addons.tenancy.deps import SessionDep
+from addons.tenancy.models import Tenant, TenantMember
+from addons.tenancy.services import add_member as _add_member
+from addons.tenancy.services import create_tenant as _create_tenant
 from core.auth import get_current_user, require_permission
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import select
 
-from care_addons.ap_tenancy import services as svc
-from care_addons.ap_tenancy.deps import ScopeDep, SessionDep, principal_of
-from care_addons.ap_tenancy.models import ApConsentGrant, ApTenant
-
-router = APIRouter(prefix="/api/platform", tags=["platform: tenancy"])
+router = APIRouter(prefix="/api/platform", tags=["platform: tenancy (deprecated)"])
 
 
 class TenantIn(BaseModel):
@@ -26,125 +34,43 @@ class MemberIn(BaseModel):
     role: str = "member"
 
 
-class ConsentIn(BaseModel):
-    subject_id: str
-    grantee_id: str
-    grantee_type: str = "human"
-    scopes: list[str] = Field(min_length=1)
-    purpose: str = "daily_care"
-    # บังคับเมื่อผู้ให้ความยินยอมไม่ใช่เจ้าของข้อมูลเอง (consent/v1)
-    authority_basis: str | None = None
-    expires_at: datetime | None = None
-
-
-class RevokeIn(BaseModel):
-    reason: str = Field(min_length=1)
-
-
-@router.post("/tenants", status_code=201)
+@router.post("/tenants", status_code=201, deprecated=True)
 async def create_tenant(
     body: TenantIn,
     session: SessionDep,
     user: Annotated[Any, Depends(require_permission("platform.tenancy.manage"))],
 ) -> dict:
-    tenant = await svc.create_tenant(session, body.tenant_id, body.display_name, body.timezone)
-    await svc.add_member(session, tenant.tenant_id, user.id, role="owner")
+    """เทียบเท่า `POST /api/tenancy/tenants` ของ kernel"""
+    tenant = await _create_tenant(session, body.tenant_id, body.display_name, body.timezone)
+    await _add_member(session, tenant.tenant_id, user.id, role="owner")
     await session.commit()
     return {"tenant_id": tenant.tenant_id, "display_name": tenant.display_name}
 
 
-@router.get("/tenants")
+@router.get("/tenants", deprecated=True)
 async def my_tenants(
     session: SessionDep, user: Annotated[Any, Depends(get_current_user)]
 ) -> list[dict]:
-    from care_addons.ap_tenancy.models import ApTenantMember
-
     if getattr(user, "is_superuser", False):
-        rows = (await session.execute(select(ApTenant))).scalars()
+        rows = (await session.execute(select(Tenant))).scalars()
         return [{"tenant_id": t.tenant_id, "display_name": t.display_name} for t in rows]
     result = await session.execute(
-        select(ApTenant)
-        .join(ApTenantMember, ApTenantMember.tenant_id == ApTenant.tenant_id)
-        .where(ApTenantMember.user_id == user.id)
+        select(Tenant)
+        .join(TenantMember, TenantMember.tenant_id == Tenant.tenant_id)
+        .where(TenantMember.user_id == user.id)
     )
     return [{"tenant_id": t.tenant_id, "display_name": t.display_name} for t in result.scalars()]
 
 
-@router.post("/tenants/{tenant_id}/members", status_code=201)
+@router.post("/tenants/{tenant_id}/members", status_code=201, deprecated=True)
 async def add_member(
     tenant_id: str,
     body: MemberIn,
     session: SessionDep,
     _: Annotated[Any, Depends(require_permission("platform.tenancy.manage"))],
 ) -> dict:
-    if await session.get(ApTenant, tenant_id) is None:
+    if await session.get(Tenant, tenant_id) is None:
         raise HTTPException(status_code=404, detail="ไม่พบ tenant")
-    member = await svc.add_member(session, tenant_id, body.user_id, body.role)
+    member = await _add_member(session, tenant_id, body.user_id, body.role)
     await session.commit()
     return {"tenant_id": member.tenant_id, "user_id": member.user_id, "role": member.role}
-
-
-@router.post("/consents", status_code=201)
-async def grant_consent(
-    body: ConsentIn,
-    scope: ScopeDep,
-    session: SessionDep,
-    user: Annotated[Any, Depends(require_permission("platform.consent.manage"))],
-) -> dict:
-    try:
-        grant = await svc.grant_consent(
-        session,
-        scope,
-        subject_id=body.subject_id,
-        grantee=svc.Principal(type=body.grantee_type, id=body.grantee_id),
-        scopes=body.scopes,
-        purpose=body.purpose,
-        granted_by=principal_of(user),
-        authority_basis=body.authority_basis,
-        expires_at=body.expires_at,
-    )
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
-    await session.commit()
-    return {"grant_id": grant.grant_id, "scopes": grant.scopes, "subject_id": grant.subject_id}
-
-
-@router.get("/consents")
-async def list_consents(scope: ScopeDep, session: SessionDep, subject_id: str | None = None) -> list[dict]:
-    stmt = select(ApConsentGrant)
-    if subject_id:
-        stmt = stmt.where(ApConsentGrant.subject_id == subject_id)
-    result = await session.execute(svc.scoped(stmt, ApConsentGrant, scope))
-    return [
-        {
-            "grant_id": g.grant_id,
-            "subject_id": g.subject_id,
-            "grantee_id": g.grantee_id,
-            "scopes": g.scopes,
-            "purpose": g.purpose,
-            # สถานะคำนวณจาก revoked_at/expires_at เท่านั้น — ไม่มีคอลัมน์เก็บซ้ำ (consent/v1)
-            "revoked_at": g.revoked_at,
-            "revoked_reason": g.revoked_reason,
-            "authority_basis": g.authority_basis,
-            "expires_at": g.expires_at,
-        }
-        for g in result.scalars()
-    ]
-
-
-@router.delete("/consents/{grant_id}", status_code=204)
-async def revoke_consent(
-    grant_id: str,
-    body: RevokeIn,
-    scope: ScopeDep,
-    session: SessionDep,
-    _: Annotated[Any, Depends(require_permission("platform.consent.manage"))],
-) -> None:
-    """เพิกถอน — ต้องระบุเหตุผลเสมอ (consent/v1 dependentRequired)"""
-    try:
-        await svc.revoke_consent(session, scope, grant_id, reason=body.reason)
-    except svc.ConsentDenied as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
-    await session.commit()
