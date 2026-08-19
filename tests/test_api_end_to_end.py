@@ -397,3 +397,61 @@ def test_activity_and_safety_over_http(client, care):
     assert len(listed["open_events"]) == 1
     # 🔒 รายการว่างไม่ได้แปลว่าปลอดภัย — API ต้องพูดเรื่องนี้เอง
     assert "ไม่ได้แปลว่าที่เหลือปลอดภัย" in listed["note"]
+
+
+def test_organization_access_over_http(client, care):
+    """หมอจากโรงพยาบาล → ได้สิทธิ์ → ลาออก → สิทธิ์หายทันที (ADR-0010)"""
+    headers, patient_id = care
+
+    org = client.post(
+        "/api/care/organizations",
+        headers=headers,
+        json={"name": "โรงพยาบาลตัวอย่าง", "kind": "hospital", "external_ref": "HOSP-001"},
+    )
+    assert org.status_code == 201, org.text
+    org_id = org.json()["organization_id"]
+
+    member = client.post(
+        f"/api/care/organizations/{org_id}/members",
+        headers=headers,
+        json={"principal_id": "user-doctor", "display_name": "หมอสมชาย", "role": "doctor"},
+    )
+    assert member.status_code == 201, member.text
+    membership_id = member.json()["membership_id"]
+
+    granted = client.post(
+        f"/api/care/organizations/{org_id}/access",
+        headers=headers,
+        json={
+            "patient_id": patient_id,
+            "principal_id": "user-doctor",
+            "authority_basis": "ผู้ดูแลหลักอนุญาตให้แพทย์เจ้าของไข้ดูข้อมูล",
+        },
+    )
+    assert granted.status_code == 201, granted.text
+    assert granted.json()["purpose"] == "clinical_care"
+    assert "care.manage" not in granted.json()["scopes"]
+    assert granted.json()["conditions"] == [
+        {"kind": "org_membership", "organization_id": org_id}
+    ]
+
+    access = client.get(
+        f"/api/care/organizations/access?patient_id={patient_id}", headers=headers
+    ).json()
+    clinical = [a for a in access if a["organization_id"] == org_id]
+    assert len(clinical) == 1 and clinical[0]["conditions_hold"] is True
+
+    ended = client.post(
+        f"/api/care/organizations/members/{membership_id}/end",
+        headers=headers,
+        json={"reason": "ย้ายไปโรงพยาบาลอื่น"},
+    )
+    assert ended.status_code == 200
+    assert ended.json()["active"] is False
+
+    access = client.get(
+        f"/api/care/organizations/access?patient_id={patient_id}", headers=headers
+    ).json()
+    clinical = [a for a in access if a["organization_id"] == org_id]
+    # ใบยังอยู่ (ไม่ถูกเพิกถอน) แต่เงื่อนไขไม่เป็นจริงแล้ว → ใช้ไม่ได้
+    assert clinical[0]["conditions_hold"] is False

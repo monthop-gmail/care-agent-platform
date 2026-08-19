@@ -41,7 +41,7 @@ os.environ.setdefault("PSTACK_SECRET_KEY", "payload-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,care_routine,"
-    "care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_orchestrator",
+    "care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_organization,care_orchestrator",
 )
 
 # schema ที่ต้องมีใน registry เพื่อ resolve $ref ระหว่างไฟล์
@@ -102,7 +102,7 @@ def build_validator(schemas: dict[str, dict], schema: dict):
 NON_SCHEMA_KEYS = (
     "extends", "description", "title",
     "care_rules", "careplan_rules", "activity_rules",
-    "inventory_rules", "home_rules", "safety_rules",
+    "inventory_rules", "home_rules", "safety_rules", "organization_rules",
 )
 
 
@@ -116,6 +116,8 @@ LOCAL_SCHEMA_FILES = [
     ("home", "v1", "home.schema.yaml"),
     ("safety", "v1", "safety.schema.yaml"),
     ("careplan", "v1", "careplan.schema.yaml"),
+    ("organization", "v1", "organization.schema.yaml"),
+    ("organization", "v1", "membership.schema.yaml"),
 ]
 
 
@@ -169,6 +171,8 @@ async def run_scenario() -> tuple[list, list, list]:
     from care_addons.care_journal import services as journal
     from care_addons.care_medication import services as medications
     from care_addons.care_orchestrator import services as orchestrator
+    from care_addons.care_organization import services as orgs
+    from care_addons.care_organization.models import CareOrganization, CareOrgMembership
     from care_addons.care_orientation import services as orientation
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
@@ -342,6 +346,24 @@ async def run_scenario() -> tuple[list, list, list]:
                 confidence=0.9,
             )
 
+            # องค์กรภายนอก + สิทธิ์ของหมอที่ผูกกับสมาชิกภาพ (ADR-0010)
+            hospital = await orgs.add_organization(
+                session, admin, name="โรงพยาบาลตัวอย่าง", kind="hospital",
+                external_ref="HOSP-001",
+            )
+            await orgs.add_member(
+                session, admin, hospital.organization_id,
+                principal=Principal(type="human", id="user-doctor", display_name="หมอสมชาย"),
+                role="doctor",
+            )
+            await orgs.grant_clinical_access(
+                session, admin, patient_id=patient.patient_id,
+                organization_id=hospital.organization_id,
+                principal=Principal(type="human", id="user-doctor"),
+                granted_by=Principal(type="human", id="user-1"),
+                authority_basis="ผู้ดูแลหลักอนุญาตให้แพทย์เจ้าของไข้ดูข้อมูล",
+            )
+
             appointment = await appointments.create_appointment(
                 session, admin, patient_id=patient.patient_id,
                 starts_at=clock.set("2026-08-19T00:30:00+00:00") + timedelta(days=1),
@@ -410,6 +432,14 @@ async def run_scenario() -> tuple[list, list, list]:
                     for e in (await session.execute(select(CareSafetyEvent))).scalars()
                 ],
                 "activity/v1": [await activities.as_activity(session, system, laundry)],
+                "organization/v1": [
+                    orgs.as_organization(o)
+                    for o in (await session.execute(select(CareOrganization))).scalars()
+                ],
+                "membership/v1": [
+                    orgs.as_membership(m)
+                    for m in (await session.execute(select(CareOrgMembership))).scalars()
+                ],
             }
 
     decisions = [
@@ -506,6 +536,8 @@ def main() -> int:
         "home/v1": ("home", "v1", "home.schema.yaml"),
         "safety/v1": ("safety", "v1", "safety.schema.yaml"),
         "activity/v1": ("activity", "v1", "activity.schema.yaml"),
+        "organization/v1": ("organization", "v1", "organization.schema.yaml"),
+        "membership/v1": ("organization", "v1", "membership.schema.yaml"),
     }
     domain_count = 0
     for contract_id, parts in DOMAIN_SCHEMAS.items():

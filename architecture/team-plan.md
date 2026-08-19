@@ -28,6 +28,7 @@ care_addons/
 ├── care_inventory/   ทีม D   ของกิน/ของใช้ + วันหมดอายุ + กันซื้อซ้ำ
 ├── care_home/        ทีม D   เสื้อผ้า/ของใช้ประจำตัว (cognitive offloading)
 ├── care_safety/      ทีม D   sensor/IoT/GPS intake
+├── care_organization/ ทีม A  คลินิก/รพ./ร้านยา + สมาชิกภาพที่เป็นเงื่อนไขของสิทธิ์ (M6)
 │
 ├── care_orchestrator/  A+B   จัดลำดับ event → context → policy → agent → verify
 └── care_escalation/    A+B   retry policy, caregiver notification, daily summary
@@ -68,14 +69,17 @@ M5 ── Daily Living & Safety (D)
            ✅ ไม่แน่ใจ = unknown ไม่ใช่การเดา · ✅ สัญญาณที่ไม่มั่นใจไม่ปลุกคน
 
 M6 ── Multi-organization (A+E)
-      clinic/hospital/pharmacy connector · care plan ข้ามองค์กร · compliance hardening
+      ✅ core: care_organization + สิทธิ์ทางคลินิกที่ผูกกับสมาชิกภาพ + provenance ของคำสั่งภายนอก
+      ⬜ adapter รายเจ้า (Odoo/HIS/FHIR/ร้านยา) — รอคู่ค้าจริงหนึ่งราย ไม่งั้นได้โค้ดที่ต้องรื้อ
+      ⬜ care plan ข้ามองค์กร · compliance ที่เป็นงานกระดาษ/infra · provisioning flow
+      DoD: ✅ องค์กรไม่ใช่ tenant · ✅ หมอลาออกแล้วเข้าไม่ได้ทันทีแม้ใบยังไม่หมดอายุ
 ```
 
 **เส้นทางวิกฤต:** M0 → M1 เท่านั้น ทุกทีมที่เหลือขนานกันได้หลัง M1 เพราะพึ่ง `ap_*` เหมือนกันหมด
 
 ## สถานะปัจจุบัน (2026-08-19)
 
-**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 118 เทสผ่านทั้ง sqlite และ Postgres,
+**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 139 เทสผ่านทั้ง sqlite และ Postgres,
 conformance ครบ 5 ตัว (drift · payload · migration · db_role · rls)
 
 | addon | สถานะ |
@@ -98,6 +102,7 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
 | `care_activity` | ✅ งานหลายขั้นตอน — เครื่องซักเสร็จ ≠ งานเสร็จ · ขั้นที่ค้างเกินเวลาเรียกผู้ดูแลเอง |
 | `care_inventory` | ✅ ของที่บ้าน + วันหมดอายุ — เตือนว่ามีอยู่แล้ว **ไม่ห้ามซื้อ** · ไม่รู้วันหมดอายุตอบว่าไม่รู้ |
 | `care_home` | ✅ ของใช้ประจำตัว/เสื้อผ้า — AI ห้ามเดาสถานะ · "จำไม่ได้" นำไปสู่ workflow ที่ปลอดภัย |
+| `care_organization` | ✅ องค์กรภายนอก + สมาชิกภาพ — สิทธิ์จริง = consent AND ยังเป็นสมาชิก ([ADR-0010](../decisions/0010-organizations-are-not-tenants.md)) |
 | `care_safety` | ✅ ทางเข้าของ GPS/wearable/sensor — confidence ต่ำไม่ปลุกคน · สัญญาณซ้ำไม่ปลุกซ้ำ · ไม่มีสัญญาณ ≠ ปลอดภัย |
 
 > **หมายเหตุ:** `care_appt_prep` ที่เคยวางไว้แยก ถูกรวมเข้า `care_appointment` แล้ว
@@ -223,6 +228,8 @@ S12 สองทุ่มตามเวลาบ้านผู้ป่วย 
 S13 หมอสั่ง "เดินวันละ 20 นาที"             → จด → เข้าคิว → คนยืนยัน → เกิดเป็นงานจริงทุกวัน
 S14 "ชุดนี้ใส่แล้วหรือยัง" — จำไม่ได้        → ใส่ตะกร้าผ้าใช้แล้วก่อน (ไม่เดาว่าสะอาด)
 S15 wearable แจ้งว่าอาจล้ม (มั่นใจ 93%)     → ปลุกทุกคน · ถ้ามั่นใจ 35% บันทึกไว้แต่ไม่ปลุก
+S16 หมอจาก รพ. A ได้สิทธิ์อ่าน              → อ่านได้ · หมอจาก รพ. B อ่านไม่ได้
+S17 หมอลาออกจาก รพ. A                       → เข้าไม่ได้ทันที แม้ใบ consent จะยังไม่หมดอายุ
 ```
 
 Adversarial tests ที่ blueprint สั่งไว้: LLM hallucination · wrong patient · wrong medication ·

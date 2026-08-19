@@ -35,7 +35,7 @@ os.environ.setdefault("PSTACK_SECRET_KEY", "migration-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"
-    "care_routine,care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_orchestrator,"
+    "care_routine,care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_organization,care_orchestrator,"
     "line_oa,care_line",
 )
 

@@ -74,6 +74,12 @@ extensions:
     detail: >-
       contract ของโดเมนเราเอง (ไม่ได้ขอให้ platform รับไปดูแล) — payload_check
       validate แถวจริงในตาราง `care_careplan_task` กับ schema นี้ทุกครั้งที่รัน CI
+  - id: organization/v1
+    path: contracts/organization/v1/
+    extends: null
+    detail: >-
+      องค์กรภายนอก + สมาชิกภาพ — **องค์กรไม่ใช่ tenant** (ADR-0010) · ใบยินยอมทางคลินิก
+      ออกให้ "คน" แล้วผูกเงื่อนไขสมาชิกภาพไว้ · payload_check validate แถวจริงทั้งสองตาราง
   - id: daily-living/v1
     path: contracts/{activity,inventory,home,safety}/v1/
     extends: null
@@ -83,7 +89,15 @@ extensions:
       ที่ต้องคง `source` ไว้ตลอดไปตาม event/v1
 
 # ช่องว่างที่เจอจากการ implement จริง
-gaps: []
+gaps:
+  - id: consent-conditions-that-must-still-hold
+    detail: >-
+      `consent/v1` ตรวจได้แค่ "ใบยังไม่หมดอายุ/ไม่ถูกเพิกถอน" แต่ใบยินยอมจำนวนหนึ่ง
+      ผูกกับ **ข้อเท็จจริงที่เปลี่ยนได้** — เช่น "หมอคนนี้ในฐานะแพทย์ของโรงพยาบาลนั้น"
+      ซึ่งต้องเป็นเท็จทันทีที่เขาลาออก ไม่ใช่รอให้ใครไปกดเพิกถอน
+      เราแก้ที่ repo นี้ด้วยฟิลด์ `conditions` + registry ของตัวตรวจ (ADR-0010)
+      และเสนอให้ platform พิจารณารับเข้า contract
+    tracked_by: null
 
 resolved_gaps:
   - id: subject-type-for-domain-records

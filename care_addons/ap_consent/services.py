@@ -8,7 +8,9 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
+from typing import Any
 
 from core.clock import now
 from core.tenancy import Principal, TenantScope, assert_same_tenant, new_id, scoped, validate_id
@@ -16,6 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_consent.models import ApConsentGrant
+
+logger = logging.getLogger(__name__)
 
 
 class ConsentDenied(PermissionError):
@@ -33,6 +37,7 @@ async def grant_consent(
     granted_by: Principal,
     authority_basis: str | None = None,
     expires_at: datetime | None = None,
+    conditions: list[dict] | None = None,
 ) -> ApConsentGrant:
     """สร้างความยินยอมหนึ่งใบ — conform `consent/v1`
 
@@ -44,6 +49,13 @@ async def grant_consent(
         raise ValueError("consent ต้องระบุ scope อย่างน้อยหนึ่งอย่าง — grant ที่ไม่มี scope ไม่มีความหมาย")
     if not purpose:
         raise ValueError("consent ต้องระบุ purpose — ความยินยอมที่ไม่บอกวัตถุประสงค์ตอบ audit ไม่ได้")
+    for condition in conditions or []:
+        kind = (condition or {}).get("kind")
+        if condition_checker(kind) is None:
+            raise ValueError(
+                f"เงื่อนไข '{kind}' ไม่มีตัวตรวจที่ลงทะเบียนไว้ — ใบที่ตรวจเงื่อนไขไม่ได้ "
+                f"จะใช้ไม่ได้เลยตอน runtime ดังนั้นห้ามออกใบตั้งแต่แรก"
+            )
     if granted_by.id != subject_id and not authority_basis:
         raise ValueError(
             f"{granted_by.id} ให้ความยินยอมแทน {subject_id} จึงต้องระบุ authority_basis "
@@ -56,6 +68,7 @@ async def grant_consent(
         grantee_type=grantee.type,
         grantee_id=grantee.id,
         scopes=list(scopes),
+        conditions=list(conditions) if conditions else None,
         purpose=purpose,
         granted_by_type=granted_by.type,
         granted_by_id=granted_by.id,
@@ -90,6 +103,44 @@ async def revoke_consent(
     await session.flush()
 
 
+# ── เงื่อนไขที่ต้องยังเป็นจริงตอนเข้าถึง ────────────────────────────────────────
+# 🔒 โมดูลนี้ไม่รู้ว่าเงื่อนไขชนิดหนึ่ง ๆ แปลว่าอะไร — โดเมนลงทะเบียนตัวตรวจเอง
+_CONDITIONS: dict[str, Any] = {}
+
+
+def register_condition(kind: str, checker: Any) -> None:
+    """checker(session, scope, condition: dict) -> bool
+
+    คืน False = ใบนี้ใช้ไม่ได้ **ตอนนี้** (ไม่ใช่ถูกเพิกถอน) · ต้องไม่ raise
+    เงื่อนไขที่พังต้องแปลว่า "ไม่ให้ผ่าน" ไม่ใช่ "ปล่อยผ่านเพราะตรวจไม่ได้"
+    """
+    _CONDITIONS[kind] = checker
+
+
+def condition_checker(kind: str) -> Any:
+    return _CONDITIONS.get(kind)
+
+
+async def conditions_hold(
+    session: AsyncSession, scope: TenantScope, grant: ApConsentGrant
+) -> bool:
+    """เงื่อนไขทุกข้อของใบนี้ยังเป็นจริงไหม — 🔒 fail closed ทุกทาง"""
+    for condition in grant.conditions or []:
+        kind = (condition or {}).get("kind")
+        checker = condition_checker(kind)
+        if checker is None:
+            # ไม่รู้จักเงื่อนไข = ไม่อนุญาต (หลักเดียวกับ scope ที่ไม่รู้จักใน consent/v1)
+            logger.warning("consent grant %s มีเงื่อนไขที่ไม่มีใครตรวจได้: %r", grant.grant_id, kind)
+            return False
+        try:
+            if not await checker(session, scope, condition):
+                return False
+        except Exception:
+            logger.exception("ตรวจเงื่อนไข %r ของ grant %s ไม่สำเร็จ", kind, grant.grant_id)
+            return False
+    return True
+
+
 async def has_consent(
     session: AsyncSession, scope: TenantScope, *, subject_id: str, required_scope: str
 ) -> bool:
@@ -115,8 +166,11 @@ async def has_consent(
             continue
         if grant.expires_at is not None and grant.expires_at <= current:
             continue
-        if required_scope in (grant.scopes or []) or "care.manage" in (grant.scopes or []):
-            return True
+        if required_scope not in (grant.scopes or []) and "care.manage" not in (grant.scopes or []):
+            continue
+        if not await conditions_hold(session, scope, grant):
+            continue
+        return True
     return False
 
 
@@ -133,6 +187,10 @@ def as_consent_grant(grant: ApConsentGrant) -> dict:
         "granted_at": grant.granted_at.isoformat(),
         "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
     }
+    if grant.conditions:
+        # ไม่ได้อยู่ใน consent/v1 — เราเติมเพราะใบที่มีเงื่อนไขแต่ payload ไม่บอก
+        # จะทำให้ consumer เข้าใจว่าใบนี้ใช้ได้ตลอดจนหมดอายุ ซึ่งไม่จริง
+        payload["conditions"] = grant.conditions
     if grant.workspace_id:
         payload["workspace_id"] = grant.workspace_id
     if grant.authority_basis:

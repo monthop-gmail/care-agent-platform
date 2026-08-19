@@ -151,6 +151,16 @@ async def build_facts(
         for e in await safety.open_events(session, scope, patient.patient_id)
     ]
 
+    # สิทธิ์ของคนนอกครอบครัวที่ยังเปิดอยู่ — 🔒 เงื่อนไขที่ไม่เป็นจริงแล้วต้องเห็นได้
+    #    ไม่งั้นใบยินยอมที่ตายแล้วจะค้างอยู่ในระบบโดยไม่มีใครไปเก็บกวาด (ADR-0010)
+    from care_addons.care_organization import services as organizations
+
+    clinical_access = [
+        row
+        for row in await organizations.open_access(session, scope, patient.patient_id)
+        if row["organization_id"]
+    ]
+
     waiting = [
         {
             "request_id": r.request_id,
@@ -167,6 +177,7 @@ async def build_facts(
         "buckets": buckets,
         "stalled_tasks": stalled,
         "safety_signals": signals,
+        "clinical_access": clinical_access,
         "awaiting_decision": waiting,
         "counted_jobs": len(jobs),
     }
@@ -198,6 +209,14 @@ def render(patient: CarePatient, facts: dict) -> str:
     if signals:
         kinds = ", ".join(sorted({s["kind"] for s in signals}))
         lines.append(f"· สัญญาณความปลอดภัยที่ยังไม่ปิด {len(signals)} รายการ: {kinds}")
+
+    access = facts.get("clinical_access") or []
+    stale = [a for a in access if not a["conditions_hold"]]
+    if access:
+        line = f"· ผู้ให้การรักษาที่เข้าถึงข้อมูลได้ {len(access) - len(stale)} ราย"
+        if stale:
+            line += f" · มี {len(stale)} ใบที่เงื่อนไขไม่เป็นจริงแล้ว (ควรเพิกถอน)"
+        lines.append(line)
 
     waiting = facts.get("awaiting_decision") or []
     if waiting:
@@ -239,12 +258,20 @@ async def send_daily_summary(
     """สร้างและส่งสรุปของวันนั้น — เรียกซ้ำได้ ส่งจริงครั้งเดียว
 
     คืน None เมื่อวันนั้นส่งไปแล้ว (ไม่ใช่ error — worker เรียกซ้ำทุกรอบโดยตั้งใจ)
+
+    `force=True` = **คำนวณใบของวันนั้นใหม่** จากข้อมูลล่าสุดแล้วอัปเดตใบเดิม
+    ไม่ใช่การส่งซ้ำ — หนึ่งวันยังได้ข้อความเดียวเสมอ (unique constraint ระดับ DB ก็บังคับไว้)
     """
     day = local_day or local_date_of(patient, now())
-    if not force:
-        already = await existing_summary(session, scope, patient.patient_id, day)
-        if already is not None:
+    already = await existing_summary(session, scope, patient.patient_id, day)
+    if already is not None:
+        if not force:
             return None
+        already.facts = await build_facts(session, scope, patient, day)
+        already.text = render(patient, already.facts)
+        already.generated_at = now()
+        await session.flush()
+        return already
 
     facts = await build_facts(session, scope, patient, day)
     text = render(patient, facts)

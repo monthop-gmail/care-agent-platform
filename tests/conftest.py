@@ -38,6 +38,7 @@ MODULES = [
     "care_inventory",
     "care_home",
     "care_safety",
+    "care_organization",
     "care_orchestrator",
     "line_oa",
     "care_line",

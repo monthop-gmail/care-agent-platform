@@ -35,6 +35,14 @@ class ApConsentGrant(Base):
     grantee_type: Mapped[str] = mapped_column(String(16), default="human")
     grantee_id: Mapped[str] = mapped_column(String(63), index=True)
     scopes: Mapped[list] = mapped_column(JSON, default=list)
+    # เงื่อนไขเพิ่มเติมที่ต้อง **ยังเป็นจริงตอนเข้าถึง** ไม่ใช่แค่ตอนให้ความยินยอม
+    #
+    # 🔒 ใบยินยอมที่ตรวจแค่ตอนออกใบ จะยังใช้ได้แม้สถานการณ์เปลี่ยนไปแล้ว —
+    #    เช่นหมอที่ลาออกจากโรงพยาบาลไปแล้วแต่ใบยังไม่หมดอายุ (ADR-0010 ข้อ 4)
+    #
+    # โมดูลนี้ไม่รู้ว่าเงื่อนไขแต่ละชนิดแปลว่าอะไร — โดเมนลงทะเบียนตัวตรวจเอง
+    # (`register_condition`) รูปแบบเดียวกับ applier ของ ap_approval (ADR-0003 กฎ 1)
+    conditions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     purpose: Mapped[str] = mapped_column(String(32), default="daily_care")
     granted_by_type: Mapped[str] = mapped_column(String(16), default="human")
     granted_by_id: Mapped[str] = mapped_column(String(63))
