@@ -154,23 +154,23 @@ async def run_scenario() -> tuple[list, list, list]:
     from care_addons.ap_policy.engine import evaluate
     from care_addons.ap_tenancy import services as tenancy
     from care_addons.ap_tenancy.clock import FakeClock
-    from care_addons.care_appointment import services as appointments
     from care_addons.care_activity import services as activities
+    from care_addons.care_appointment import services as appointments
     from care_addons.care_careplan import services as careplan
     from care_addons.care_careplan.models import CareCarePlanTask
+    from care_addons.care_escalation import services as jobs
     from care_addons.care_home import services as home
     from care_addons.care_home.models import CareHomeItem
     from care_addons.care_inventory import services as inventory
     from care_addons.care_inventory.models import CareInventoryItem
-    from care_addons.care_safety import services as safety
-    from care_addons.care_safety.models import CareSafetyEvent
-    from care_addons.care_escalation import services as jobs
     from care_addons.care_journal import services as journal
     from care_addons.care_medication import services as medications
     from care_addons.care_orchestrator import services as orchestrator
     from care_addons.care_orientation import services as orientation
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
+    from care_addons.care_safety import services as safety
+    from care_addons.care_safety.models import CareSafetyEvent
 
     logging.getLogger().setLevel(
         logging.INFO if os.environ.get("PAYLOAD_CHECK_VERBOSE") else logging.WARNING
