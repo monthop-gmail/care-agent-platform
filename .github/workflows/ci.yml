@@ -85,5 +85,11 @@ jobs:
       - name: Payload conformance (agent-platform)
         run: python conformance/payload_check.py
 
+      # ด่านที่สอง — พิสูจน์ว่า RLS กันข้าม tenant ได้จริงโดยไม่พึ่ง scoped()
+      # (เทสปกติพิสูจน์ไม่ได้ เพราะทุก query ผ่าน scoped() อยู่แล้ว)
+      - name: RLS isolation (Postgres)
+        if: matrix.db == 'postgres'
+        run: python conformance/rls_check.py
+
       - name: Test
         run: pytest tests/ -q

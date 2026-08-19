@@ -13,12 +13,13 @@ import logging
 from dataclasses import dataclass
 
 from core.runtime import ctx
+from core.tenancy import Principal, TenantScope
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from care_addons.ap_tenancy.services import Principal, TenantScope
 from care_addons.care_escalation import services as jobs
 from care_addons.care_line import services as line
 from care_addons.care_line.models import CareLineBinding
+from care_addons.tenant_session import bind_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -245,9 +246,15 @@ async def on_line_message(payload: dict) -> None:
         return
 
     async with get_sessionmaker()() as session:
+        # ตารางนี้เป็น "control plane ของช่องทาง" จึงไม่มี RLS — ต้องอ่านให้ได้ก่อน
+        # ถึงจะรู้ว่า LINE user คนนี้เป็นของ tenant ไหน (เหตุผลเดียวกับที่ kernel
+        # ไม่เปิด RLS บน tenant/tenant_member — ไม่งั้นหา scope ไม่ได้เลย)
         binding = await line.find_binding(
             session, channel_id=channel_id, line_user_id=line_user_id
         )
+        if binding is not None:
+            # รู้ tenant แล้ว — ตั้ง GUC ก่อนแตะข้อมูลโดเมนใด ๆ (care-agent-platform#4)
+            await bind_tenant(session, binding.tenant_id)
 
         if binding is None:
             intent = interpret(text)
@@ -268,6 +275,7 @@ async def on_line_message(payload: dict) -> None:
                     line_user_id=line_user_id,
                 )
                 await session.commit()
+                await bind_tenant(session, binding.tenant_id)
             except line.PairingError as e:
                 await line.transport(
                     channel_id,

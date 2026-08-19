@@ -34,6 +34,8 @@ pstack ทำของที่เราต้องการเสร็จแ�
 
 - **test ต้องรันบน sqlite ได้โดยไม่ต้องมี Postgres** — ห้ามใช้ฟีเจอร์เฉพาะ Postgres โดยไม่มี fallback
   · แต่ CI รันทั้ง sqlite และ Postgres เสมอ (matrix) เพราะ sqlite อย่างเดียวไม่พอ
+- **ตารางใหม่ที่มี `tenant_id` = ต้องเปิด RLS** ด้วย `core.tenancy.rls_statements()` ใน migration
+  (นอก guard `has_table` เสมอ) และเพิ่มชื่อเข้า `PROTECTED` ใน `conformance/rls_check.py`
 - **แก้ `models.py` = ต้องมี Alembic migration** — `conformance/migration_check.py` บังคับใน CI
   · สร้าง revision บน DB ที่ **ยังไม่มีตารางของโมดูลนั้น** ไม่งั้น autogenerate จะเห็นว่า
   "ไม่มีอะไรต่าง" แล้วออก revision เปล่า (เคยเกิดกับ `care_appointment` มาแล้ว — migration_check จับได้)

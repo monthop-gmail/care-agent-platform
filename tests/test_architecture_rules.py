@@ -153,3 +153,33 @@ def test_care_tick_is_registered_as_a_periodic_job():
     import care_addons.care_escalation.jobs  # noqa: F401  ลงทะเบียนตอน import
 
     assert "care_tick" in [fn.__name__ for fn, _ in periodic_jobs()]
+
+
+def test_every_session_opened_in_addons_binds_a_tenant():
+    """ทุกที่ที่เปิด session เองต้องผูก tenant ก่อนแตะข้อมูลโดเมน
+
+    RLS ปฏิเสธแบบ deny-by-default — ลืมผูกแล้วจะ **เห็น 0 แถวโดยไม่มี error**
+    ซึ่งแปลว่า worker เตือนผู้ป่วยเงียบ ๆ โดยไม่มีใครรู้ (care-agent-platform#4)
+
+    request ที่มาทาง HTTP ไม่ต้องทำเอง — `get_scope` ของ kernel ตั้ง GUC ให้แล้ว
+    """
+    # ยกเว้นได้เฉพาะไฟล์ที่เปิด session ไปอ่านตารางที่ **ไม่มี tenant_id** เท่านั้น
+    # เพิ่มรายการที่นี่ต้องเขียนเหตุผลกำกับ และต้องผ่านสายตาคนรีวิว
+    ALLOWED = {
+        # อ่าน access_token ของ LINE channel (ตารางของ pstack ไม่มี tenant_id ไม่มี RLS)
+        "care_addons/care_line/services.py",
+    }
+
+    offenders = []
+    for module in AP_MODULES + CARE_MODULES:
+        for path in _python_files(module):
+            relative = str(path.relative_to(ROOT))
+            text = path.read_text(encoding="utf-8")
+            if "get_sessionmaker()(" not in text or relative in ALLOWED:
+                continue
+            if "bind_tenant" not in text:
+                offenders.append(relative)
+    assert not offenders, (
+        "ไฟล์ที่เปิด session เองแต่ไม่ได้ผูก tenant — RLS จะให้ 0 แถวเงียบ ๆ:\n"
+        + "\n".join(offenders)
+    )

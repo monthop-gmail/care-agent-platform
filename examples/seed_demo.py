@@ -39,6 +39,7 @@ async def main() -> None:
     from care_addons.care_medication import services as meds
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
+    from care_addons.tenant_session import bind_tenant
 
     scope = tenancy.TenantScope(
         tenant_id=TENANT,
@@ -47,6 +48,7 @@ async def main() -> None:
 
     async with get_sessionmaker()() as session:
         await tenancy.create_tenant(session, TENANT, "ครอบครัวตัวอย่าง")
+        await bind_tenant(session, TENANT)   # RLS ของตารางโดเมน (care-agent-platform#4)
         patient = await patients.create_patient(
             session,
             scope,

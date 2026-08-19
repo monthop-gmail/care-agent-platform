@@ -127,6 +127,7 @@ async def run_scenario() -> tuple[list, list, list]:
     from care_addons.care_orientation import services as orientation
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
+    from care_addons.tenant_session import bind_tenant
 
     logging.getLogger().setLevel(
         logging.INFO if os.environ.get("PAYLOAD_CHECK_VERBOSE") else logging.WARNING
@@ -160,6 +161,7 @@ async def run_scenario() -> tuple[list, list, list]:
     with FakeClock("2026-08-19T00:30:00+00:00") as clock:
         async with get_sessionmaker()() as session:
             await tenancy.create_tenant(session, tenant_id, "ครอบครัวตรวจสอบ")
+            await bind_tenant(session, tenant_id)   # RLS ของตารางโดเมน
             patient = await patients.create_patient(
                 session,
                 admin,
@@ -243,6 +245,7 @@ async def run_scenario() -> tuple[list, list, list]:
         # เดินวงจร: เตือน → เงียบ → เตือนซ้ำ → พลาด → ส่งต่อผู้ดูแล
         clock.set("2026-08-19T01:00:00+00:00")
         async with get_sessionmaker()() as session:
+            await bind_tenant(session, tenant_id)
             for _ in range(5):
                 await jobs.run_due_jobs(session, system)
                 await session.commit()
@@ -261,6 +264,7 @@ async def run_scenario() -> tuple[list, list, list]:
             await session.commit()
 
         async with get_sessionmaker()() as session:
+            await bind_tenant(session, tenant_id)
             rows = (
                 await session.execute(select(ApAuditEvent).order_by(ApAuditEvent.occurred_at))
             ).scalars()
