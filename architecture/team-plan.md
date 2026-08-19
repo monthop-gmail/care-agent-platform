@@ -53,8 +53,7 @@ M2 ── Care Loop (ทีม B ขนานกับ ทีม C)
       DoD: reminder → ack → missed → escalate ครบวง มี scenario test
 
 M3 ── Escalation & Prep (A+B+C)
-      ✅ ap_approval · care_orchestrator (daily summary) · care_escalation · care_appt_prep
-      ⬜ care_careplan (คำสั่งหมอหลังพบแพทย์ → งานประจำที่เกิดซ้ำ)
+      ✅ ap_approval · care_orchestrator · care_escalation · care_appt_prep · care_careplan
       DoD: ✅ daily summary ส่งได้ · ✅ approval ค้างได้ตลอดกาลโดยไม่มี auto-approve
 
 M4 ── Intelligence & Channels (C+E)
@@ -73,7 +72,7 @@ M6 ── Multi-organization (A+E)
 
 ## สถานะปัจจุบัน (2026-08-19)
 
-**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 85 เทสผ่านทั้ง sqlite และ Postgres,
+**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 99 เทสผ่านทั้ง sqlite และ Postgres,
 conformance ครบ 5 ตัว (drift · payload · migration · db_role · rls)
 
 | addon | สถานะ |
@@ -90,8 +89,9 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
 | `care_orientation` | ✅ 5 ชั้น (เวลา/วันที่/สถานที่/คน/แผน) + daily brief + temporal memory ("พรุ่งนี้") |
 | `care_line` | ✅ ช่องทางจริงของผู้ป่วย — จับคู่บัญชี, ส่ง reminder ออก LINE, รับคำตอบกลับแบบ deterministic ([ADR-0008](../decisions/0008-patient-channel-is-deterministic.md)) |
 | `ap_approval` | ✅ คิวรออนุมัติตาม `approval/v1` — decision immutable, ไม่มี auto-approve, ผู้ยื่นตัดสินเองไม่ได้ ([ADR-0009](../decisions/0009-approval-waits-forever.md)) |
-| `care_orchestrator` | ✅ รอบวัน — สรุปประจำวันถึงผู้ดูแลตามเวลาท้องถิ่นของผู้ป่วย (ข้อเท็จจริงล้วน) + ปิดคำขอที่เลยกำหนด |
-| `care_careplan` · `care_activity` · `care_inventory` · `care_home` · `care_safety` | ⬜ ยังไม่เริ่ม |
+| `care_orchestrator` | ✅ รอบวัน — สร้างงานประจำวันให้ทุกคนเอง + สรุปประจำวันตามเวลาท้องถิ่นของผู้ป่วย + ปิดคำขอที่เลยกำหนด |
+| `care_careplan` | ✅ คำสั่งหลังพบหมอ → งานที่เกิดซ้ำจริง — จดได้แค่ proposed ต้องมีคนยืนยัน · adherence ไม่มีบันทึกตอบว่า "ข้อมูลไม่พอ" ไม่ใช่ 0% |
+| `care_activity` · `care_inventory` · `care_home` · `care_safety` | ⬜ ยังไม่เริ่ม |
 
 > **หมายเหตุ:** `care_appt_prep` ที่เคยวางไว้แยก ถูกรวมเข้า `care_appointment` แล้ว
 > เพราะ `contracts/appointment/v1` นิยาม `PreparationStep` เป็นส่วนหนึ่งของนัดหมาย
@@ -195,6 +195,7 @@ S9  agent พยายามแก้ medication เอง          → ถู�
 S10 ซื้ออาหารซ้ำทั้งที่ของยังไม่หมดอายุ       → เตือนว่ามีอยู่แล้ว (ไม่ห้ามซื้อ)
 S11 agent เสนอยา แล้วไม่มีใครกดอนุมัติ      → ค้างในคิวตลอดกาล ยาไม่เปลี่ยน ห้าม auto-approve
 S12 สองทุ่มตามเวลาบ้านผู้ป่วย                → ผู้ดูแลได้สรุปข้อเท็จจริงของวัน วันละครั้ง
+S13 หมอสั่ง "เดินวันละ 20 นาที"             → จด → เข้าคิว → คนยืนยัน → เกิดเป็นงานจริงทุกวัน
 ```
 
 Adversarial tests ที่ blueprint สั่งไว้: LLM hallucination · wrong patient · wrong medication ·

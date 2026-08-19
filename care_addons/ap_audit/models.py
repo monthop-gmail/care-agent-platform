@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from core.db import Base
-from sqlalchemy import JSON, DateTime, Index, String
+from sqlalchemy import JSON, BigInteger, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -29,6 +29,15 @@ class ApAuditEvent(Base):
     )
 
     event_id: Mapped[str] = mapped_column(String(63), primary_key=True)
+    # ลำดับการเขียนจริง — ใช้เรียง event ที่ `occurred_at` เท่ากันเป๊ะ
+    #
+    # 🔒 trail ที่เรียงไม่ได้ = ตอบไม่ได้ว่าอะไรเกิดก่อนอะไร ซึ่งทำลายเหตุผลทั้งหมดของการมี audit
+    #    เวลาความละเอียดระดับไมโครวินาทีชนกันได้จริง (หลาย event ใน transaction เดียว)
+    #    และ Postgres ไม่รับประกันลำดับของแถวที่ ORDER BY เท่ากัน
+    #
+    # ⚠️ รับประกันเฉพาะลำดับของ event ที่เขียนจาก **process เดียวกัน** — ไม่ใช่นาฬิกากลาง
+    #    ค่าเริ่มต้นมาจากเวลาระบบตอน import จึงเพิ่มขึ้นเรื่อย ๆ ข้าม restart ด้วย
+    sequence_no: Mapped[int] = mapped_column(BigInteger)
     event_type: Mapped[str] = mapped_column(String(64), index=True)
     care_event_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 

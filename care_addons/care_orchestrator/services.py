@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,8 @@ from care_addons.care_orchestrator import summary_policy
 from care_addons.care_orchestrator.models import CareDailySummary
 from care_addons.care_patient.models import CarePatient
 from care_addons.care_patient.services import feature_enabled
+
+logger = logging.getLogger(__name__)
 
 # source_kind ของงาน → หัวข้อในสรุป (ตาม daily_summary.include ของ escalation-policy)
 BUCKETS = {
@@ -48,6 +51,15 @@ BUCKET_LABEL = {
 
 DONE_STATES = ("confirmed",)
 MISSED_STATES = ("missed", "escalated")
+
+
+def _utc(value: datetime) -> datetime:
+    """เวลาที่อ่านกลับมาจาก DB อาจไม่มี timezone ติดมา (sqlite เก็บ naive)
+
+    ระบบเก็บทุกอย่างเป็น UTC อยู่แล้ว — ที่นี่แค่ติดป้ายให้ตรงกับความจริง
+    ไม่ใช่การแปลงเขตเวลา · ถ้าไม่ทำ `astimezone()` จะตีความว่าเป็นเวลาท้องถิ่นของ server เงียบ ๆ
+    """
+    return value if value.tzinfo else value.replace(tzinfo=ZoneInfo("UTC"))
 
 
 def _tz(patient: CarePatient) -> ZoneInfo:
@@ -105,7 +117,7 @@ async def build_facts(
             {
                 "label": job.label,
                 "state": job.state,
-                "due_local": job.due_at.astimezone(_tz(patient)).strftime("%H:%M"),
+                "due_local": _utc(job.due_at).astimezone(_tz(patient)).strftime("%H:%M"),
                 "attempts": job.attempts,
             }
         )
@@ -115,13 +127,13 @@ async def build_facts(
         {
             "label": j.label,
             "state": j.state,
-            "due_at": j.due_at.isoformat(),
+            "due_at": _utc(j.due_at).isoformat(),
             "attempts": j.attempts,
         }
         for j in await escalation.open_jobs(
             session, scope, patient.patient_id, states=["pending", "reminded", "acknowledged", "escalated"]
         )
-        if j.due_at <= now() and j.closed_at is None
+        if _utc(j.due_at) <= now() and j.closed_at is None
     ]
 
     waiting = [
@@ -129,7 +141,7 @@ async def build_facts(
             "request_id": r.request_id,
             "capability": r.capability,
             "summary": r.summary,
-            "requested_at": r.requested_at.isoformat(),
+            "requested_at": _utc(r.requested_at).isoformat(),
         }
         for r in await approvals.pending_requests(session, scope)
     ]
@@ -287,6 +299,46 @@ async def due_for_summary(session: AsyncSession, scope: TenantScope) -> list[Car
             continue
         due.append(patient)
     return due
+
+
+async def materialize_today(session: AsyncSession, scope: TenantScope) -> dict:
+    """สร้างงานของ "วันนี้" ให้ผู้ป่วยทุกคนใน tenant — เรียกซ้ำได้ ไม่สร้างซ้ำ
+
+    ก่อนมีขั้นนี้ งานประจำวันเกิดขึ้นก็ต่อเมื่อมีคนยิง `POST /api/care/routines/materialize`
+    ซึ่งแปลว่า closed loop ทั้งวงขึ้นอยู่กับว่ามีใครจำได้ไหม — ไม่ใช่คุณสมบัติที่ยอมรับได้
+    ของระบบที่ผู้ป่วยพึ่งพาเรื่องยา
+
+    🔒 ผู้ป่วยที่ยังไม่ได้ให้ consent กับ principal ของ orchestrator จะถูก **ข้าม**
+       ไม่ใช่ทำให้ทั้ง tenant หยุด — ไม่มี consent = ไม่แตะข้อมูลของคนนั้น (ADR-0007)
+    """
+    from care_addons.ap_consent.services import ConsentDenied
+    from care_addons.care_careplan import services as careplan
+    from care_addons.care_routine import services as routines
+
+    counts = {"routine_jobs": 0, "careplan_jobs": 0, "skipped_no_consent": 0}
+    result = await session.execute(scoped(select(CarePatient), CarePatient, scope))
+    for patient in result.scalars():
+        try:
+            counts["routine_jobs"] += len(
+                await routines.materialize_day(session, scope, patient.patient_id)
+            )
+            counts["careplan_jobs"] += len(
+                await careplan.materialize_day(session, scope, patient.patient_id)
+            )
+        except ConsentDenied:
+            counts["skipped_no_consent"] += 1
+            logger.warning(
+                "orchestrator ยังไม่มี consent สำหรับผู้ป่วย %s — ข้ามการสร้างงานของวันนี้",
+                patient.patient_id,
+            )
+    return counts
+
+
+async def run_cycle(session: AsyncSession, scope: TenantScope) -> dict:
+    """รอบเดียวของ orchestrator: สร้างงานของวัน → ส่งสรุปที่ถึงเวลา → ปิดคำขอที่เลยกำหนด"""
+    result = await materialize_today(session, scope)
+    result.update(await run_daily_summaries(session, scope))
+    return result
 
 
 async def run_daily_summaries(session: AsyncSession, scope: TenantScope) -> dict:
