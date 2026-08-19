@@ -8,7 +8,8 @@
 platform_contract_version: "0.1"
 
 contracts:
-  - identity/v1     # tenant · workspace · principal — ap_tenancy ทั้งโมดูลสร้างบน $defs ชุดนี้
+  - identity/v1     # tenant · workspace · principal — ตั้งแต่ pstack v0.3.0 ใช้ผ่าน kernel `core.tenancy`
+                    # ซึ่งประกาศ ID_PATTERN ให้ตรง $defs.Id (เรามีเทสล็อกไว้ที่ tests/test_kernel_contract_lock.py)
   - event/v1        # audit event ทุกตัวของระบบ (ap_audit) · care event เป็นส่วนขยาย ไม่ใช่ของแทน
   - policy/v1       # action_risk × authority_map → authority (ap_policy)
   - capability/v1   # ActionRisk — ผูกกับ capability ไม่ใช่กับ request
@@ -43,6 +44,19 @@ conformance:
       scope: >-
         payload จริงที่ระบบผลิต validate ผ่าน event/v1 · policy/v1 · error/v1 · consent/v1
         (audit event + consent grant ทั้งใบที่ยังใช้ได้และใบที่ถูกเพิกถอน)
+    - name: migration_check
+      command: python conformance/migration_check.py
+      scope: schema ที่สร้างจาก migration ล้วน ๆ ตรงกับ models — แก้ models แล้วลืม revision = CI แดง
+    - name: db_role_check
+      command: python conformance/db_role_check.py
+      scope: >-
+        role ที่แอปใช้ต่อ DB ไม่ใช่ superuser และไม่มี BYPASSRLS
+        — ถ้าใช่ RLS จะไร้ผลทั้งหมดโดยไม่มีสัญญาณ (step แรกที่แตะ DB ใน CI)
+    - name: rls_check
+      command: python conformance/rls_check.py
+      scope: >-
+        tenant isolation ชั้น DB ทำงานจริง — query ดิบไม่ผ่าน scoped() ข้าม tenant ต้องเห็น 0 แถว
+        · ตอบข้อกำหนดของ identity/v1 ที่ว่า isolation ต้องลงลึกถึง DB ไม่ใช่แค่ filter ระดับ query
 
 # ส่วนขยายที่ repo นี้นิยามเองในโดเมนของตัวเอง — ไม่ได้ขอให้ platform รับไปดูแล
 extensions:

@@ -249,8 +249,9 @@ repo นี้ประกาศตัวเป็น consumer ผ่าน [`pl
 1. [`architecture/care-agent-architecture.md`](architecture/care-agent-architecture.md) — ระบบนี้คืออะไร
 2. [`architecture/team-plan.md`](architecture/team-plan.md) — ทีมคุณทำ addon ไหน milestone ไหน
 3. [`decisions/`](decisions/) — ข้อผูกพันที่แก้ไม่ได้เอง
-4. [pstack MODULE_GUIDE](https://github.com/willpower-institute/pstack/blob/main/docs/MODULE_GUIDE.md) — วิธีเขียน addon
-5. [`ref/chatgpt-care-agent-design.md`](ref/chatgpt-care-agent-design.md) — ที่มาของทุก requirement
+4. [pstack MODULE_GUIDE](https://github.com/willpower-institute/pstack/blob/main/docs/MODULE_GUIDE.md) — วิธีเขียน addon (§9 คือ multi-tenancy/RLS)
+5. [agent-platform consumer adoption guide](https://github.com/monthop-gmail/agent-platform/blob/main/architecture/consumer-adoption-guide.md) — ถ้าจะเอา repo อื่นเข้า ecosystem เดียวกัน
+6. [`ref/chatgpt-care-agent-design.md`](ref/chatgpt-care-agent-design.md) — ที่มาของทุก requirement
 
 ## License
 
