@@ -15,11 +15,10 @@ from typing import Any
 from addons.tenancy.models import Tenant
 from core.db import get_sessionmaker
 from core.jobs import periodic_job
-from core.tenancy import Principal, TenantScope
+from core.tenancy import Principal, TenantScope, bind_tenant, unbind_tenant
 from sqlalchemy import select
 
 from care_addons.care_escalation import services as svc
-from care_addons.tenant_session import bind_tenant, unbind_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ async def care_tick(ctx: Any) -> dict:
             for key, value in summary.items():
                 totals[key] = totals.get(key, 0) + value
             await session.commit()   # จบงานของ tenant นี้ก่อนเปลี่ยนไป tenant ถัดไป
-        unbind_tenant(session)
+        await unbind_tenant(session)
     if any(totals.values()):
         logger.info("care_tick: %s", totals)
     return totals

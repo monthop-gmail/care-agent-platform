@@ -113,6 +113,7 @@ async def run_scenario() -> tuple[list, list, list]:
     from core.db import dispose_engine, get_engine, get_sessionmaker
     from core.registry import create_core_tables, sync_modules
     from core.runtime import ctx
+    from core.tenancy import bind_tenant
     from sqlalchemy import select
 
     from care_addons.ap_audit.models import ApAuditEvent
@@ -127,7 +128,6 @@ async def run_scenario() -> tuple[list, list, list]:
     from care_addons.care_orientation import services as orientation
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
-    from care_addons.tenant_session import bind_tenant
 
     logging.getLogger().setLevel(
         logging.INFO if os.environ.get("PAYLOAD_CHECK_VERBOSE") else logging.WARNING

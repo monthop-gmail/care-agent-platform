@@ -13,13 +13,12 @@ import logging
 from dataclasses import dataclass
 
 from core.runtime import ctx
-from core.tenancy import Principal, TenantScope
+from core.tenancy import Principal, TenantScope, bind_tenant
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.care_escalation import services as jobs
 from care_addons.care_line import services as line
 from care_addons.care_line.models import CareLineBinding
-from care_addons.tenant_session import bind_tenant
 
 logger = logging.getLogger(__name__)
 

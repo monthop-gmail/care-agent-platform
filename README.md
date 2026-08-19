@@ -115,7 +115,7 @@ curl -X POST localhost:8000/api/care/line/pairing-codes \
 ต้องมี pstack checkout ไว้ข้าง ๆ (tag เดียวกับ `PSTACK_REF`)
 
 ```bash
-git clone --branch v0.3.0 https://github.com/willpower-institute/pstack.git ../pstack
+git clone --branch v0.3.1 https://github.com/willpower-institute/pstack.git ../pstack
 python3 -m venv .venv && .venv/bin/pip install -e "../pstack[dev]"
 
 export PSTACK_ADDONS_PATHS=../pstack/addons,care_addons
@@ -223,10 +223,13 @@ repo นี้ประกาศตัวเป็น consumer ผ่าน [`pl
 | `scoped()` (app) | ทุก query ที่อ่านข้อมูลของ tenant ต้องผ่าน — เป็นด่านที่ตั้งใจ | ลืมแล้วเห็นข้ามได้ ถ้าไม่มีด่านสอง |
 | **RLS (DB)** | policy ของ Postgres กรองตาม GUC `pstack.tenant_id` | ลืมตั้ง scope = **เห็น 0 แถว** (deny by default) |
 
-🔒 **ทุก path ที่เปิด session เองต้อง `bind_tenant(session, tenant_id)`** — HTTP ไม่ต้องทำเอง
-เพราะ `get_scope` ของ kernel ตั้งให้แล้ว · GUC มีอายุแค่ใน transaction ดังนั้น
-[`care_addons/tenant_session.py`](care_addons/tenant_session.py) ผูก tenant ไว้กับ session
-แล้วตั้งใหม่ให้อัตโนมัติทุก transaction — ไม่งั้นโค้ดที่ commit ระหว่างทางจะเห็น 0 แถวเงียบ ๆ
+🔒 **ทุก path ที่เปิด session เองต้อง `core.tenancy.bind_tenant(session, tenant_id)`**
+— HTTP ไม่ต้องทำเอง เพราะ `get_scope` ของ kernel ผูกให้แล้ว
+
+`set_tenant()` ตั้ง GUC ที่มีอายุแค่ transaction เดียว ส่วน `bind_tenant()` ผูกไว้กับ session
+แล้วตั้งใหม่ให้ทุก transaction — โค้ดที่ commit ระหว่างทางจึงไม่เห็น 0 แถวเงียบ ๆ
+(เดิมเราเขียนเองที่ `care_addons/tenant_session.py` แล้วเสนอขึ้น kernel ที่
+[pstack#10](https://github.com/willpower-institute/pstack/issues/10) — v0.3.1 รับเข้าแล้วเราจึงลบของเราทิ้ง)
 
 ตารางที่ **ไม่เปิด RLS โดยตั้งใจ**: `care_line_binding` · `care_line_pairing_code` —
 เป็น control plane ของช่องทางที่ต้องอ่านให้ได้ก่อนถึงจะรู้ว่า LINE user คนนี้เป็นของ tenant ไหน

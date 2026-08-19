@@ -161,7 +161,8 @@ def test_every_session_opened_in_addons_binds_a_tenant():
     RLS ปฏิเสธแบบ deny-by-default — ลืมผูกแล้วจะ **เห็น 0 แถวโดยไม่มี error**
     ซึ่งแปลว่า worker เตือนผู้ป่วยเงียบ ๆ โดยไม่มีใครรู้ (care-agent-platform#4)
 
-    request ที่มาทาง HTTP ไม่ต้องทำเอง — `get_scope` ของ kernel ตั้ง GUC ให้แล้ว
+    request ที่มาทาง HTTP ไม่ต้องทำเอง — `get_scope` ของ kernel ผูกให้แล้ว
+    (ตั้งแต่ pstack v0.3.1 `bind_tenant` เป็นของ kernel — เดิมเราเขียนเองแล้วเสนอขึ้นไป)
     """
     # ยกเว้นได้เฉพาะไฟล์ที่เปิด session ไปอ่านตารางที่ **ไม่มี tenant_id** เท่านั้น
     # เพิ่มรายการที่นี่ต้องเขียนเหตุผลกำกับ และต้องผ่านสายตาคนรีวิว
