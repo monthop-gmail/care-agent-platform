@@ -49,10 +49,33 @@ version chain, health journal, นัดหมาย + การเตรีย�
 ### Docker
 
 ```bash
-cp .env.example .env      # แก้ PSTACK_SECRET_KEY ก่อนใช้จริง (และ APP_PORT ถ้าพอร์ตชน)
+cp .env.example .env      # แก้ PSTACK_SECRET_KEY และ DB_SUPERUSER_PASSWORD ก่อนใช้จริง
 docker compose up -d --build
 curl localhost:8000/healthz
 ```
+
+> 🔒 **role ที่แอปใช้ต่อ DB ต้องไม่ใช่ superuser** — image `postgres` สร้าง `POSTGRES_USER`
+> เป็น superuser เสมอ และ **RLS ถูก bypass เสมอโดย superuser** (`FORCE ROW LEVEL SECURITY`
+> คุมได้แค่ table owner) `DB_SUPERUSER` จึงใช้ bootstrap เท่านั้น ส่วนแอปต่อด้วย `DB_USER`
+> ที่ [`deploy/db-init/10-app-role.sh`](deploy/db-init/10-app-role.sh) สร้างเป็น
+> `NOSUPERUSER NOBYPASSRLS` · ตรวจได้ด้วย `python conformance/db_role_check.py`
+
+#### ย้าย deployment เดิมมาใช้ role ที่ไม่ใช่ superuser
+
+init script รันเฉพาะตอน `initdb` ครั้งแรก — volume ที่มีข้อมูลอยู่แล้วต้องรันครั้งเดียวด้วยมือ
+โดยเชื่อมต่อในฐานะ superuser เดิม (ชื่อเดียวกับ `DB_USER` ของ compose ชุดเก่า):
+
+```sql
+BEGIN;
+  -- ถอด superuser ออกจาก role ที่แอปใช้อยู่ ไม่ต้องสร้าง role ใหม่และไม่ต้องย้าย ownership
+  ALTER ROLE care NOSUPERUSER NOBYPASSRLS;
+  -- ต้องมี superuser อีกตัวไว้ดูแลระบบ ไม่งั้นจะไม่เหลือใครแก้ได้
+  CREATE ROLE postgres LOGIN PASSWORD 'เปลี่ยนด้วย' SUPERUSER;
+COMMIT;
+```
+
+แล้วอัปเดต `.env` (`DB_SUPERUSER` / `DB_SUPERUSER_PASSWORD`) ให้ตรง และรัน
+`python conformance/db_role_check.py` ยืนยันว่าผ่านก่อนถือว่าเสร็จ
 
 ลองวงจรเต็ม (สร้าง tenant → ผู้ป่วย → กิจวัตร → เตือน → ยืนยัน → ดู audit trail):
 

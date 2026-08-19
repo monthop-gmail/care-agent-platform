@@ -20,12 +20,14 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_DB: care_test
-          POSTGRES_USER: care
-          POSTGRES_PASSWORD: care
+          # superuser สำหรับ bootstrap เท่านั้น — เทสต่อด้วย role `care` ที่สร้างทีหลัง
+          # ให้ตรงกับ production ไม่งั้น CI ไม่ได้ทดสอบสิ่งที่ deploy จริง (care-agent-platform#1)
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U care -d care_test"
+          --health-cmd "pg_isready -U postgres -d care_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -50,6 +52,24 @@ jobs:
         run: |
           pip install -e "./pstack_src[dev]"
           pip install -r requirements-dev.txt
+
+      # service container ของ GitHub Actions mount init script ไม่ได้ จึงสร้าง role ตรงนี้แทน
+      # ให้ตรงกับ deploy/db-init/10-app-role.sh ที่ production ใช้
+      - name: สร้าง role แอปแบบ NOSUPERUSER ให้ตรงกับ production
+        if: matrix.db == 'postgres'
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d care_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE care LOGIN PASSWORD 'care' NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;
+          ALTER DATABASE care_test OWNER TO care;
+          ALTER SCHEMA public OWNER TO care;
+          GRANT ALL ON SCHEMA public TO care;
+          SQL
+
+      # ต้องมาก่อนทุก step ที่แตะ DB — ถ้า role ผิด ผลของ step อื่นเชื่อไม่ได้
+      - name: Role ที่แอปใช้ต้องไม่ใช่ superuser
+        run: python conformance/db_role_check.py
 
       - name: Lint
         if: matrix.db == 'sqlite'
