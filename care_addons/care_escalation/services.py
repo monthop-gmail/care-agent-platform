@@ -62,6 +62,7 @@ SEND_CAPABILITY = {
 CONFIRMED_EVENT = {
     "meal": "care.meal.confirmed",
     "medication": "care.medication.confirmed",
+    "careplan": "care.plan.task_completed",
     # 🔒 ไม่ map appointment ที่นี่ — "รับทราบว่ามีนัด" ไม่ได้แปลว่า "ไปพบหมอมาแล้ว"
     #    care.appointment.completed ออกได้จาก care_appointment.complete_appointment() เท่านั้น
 }

@@ -34,6 +34,7 @@ MODULES = [
     "care_journal",
     "care_appointment",
     "care_orientation",
+    "care_careplan",
     "care_orchestrator",
     "line_oa",
     "care_line",
@@ -248,7 +249,9 @@ async def audit_events(session, tenant_id: str, patient_id: str | None = None):
     from care_addons.ap_audit.models import ApAuditEvent
 
     stmt = select(ApAuditEvent).where(ApAuditEvent.tenant_id == tenant_id)
-    result = await session.execute(stmt.order_by(ApAuditEvent.occurred_at))
+    result = await session.execute(
+        stmt.order_by(ApAuditEvent.occurred_at, ApAuditEvent.sequence_no)
+    )
     events = list(result.scalars())
     if patient_id:
         events = [e for e in events if (e.attributes or {}).get("patient_id") == patient_id]

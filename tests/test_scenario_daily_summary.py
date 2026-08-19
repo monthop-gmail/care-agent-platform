@@ -189,3 +189,29 @@ async def test_daily_run_expires_overdue_approvals_without_approving_them(sessio
         await session.refresh(req)
         assert req.state == "expired"
         assert await approvals.pending_requests(session, admin) == []
+
+
+async def test_summary_works_on_jobs_loaded_fresh_from_the_database(session, tenant):
+    """เวลาที่อ่านกลับมาจาก DB อาจไม่มี timezone ติดมา (sqlite) — สรุปต้องไม่พังเพราะเรื่องนี้
+
+    เทสอื่นใช้ object ที่ยังอยู่ใน session เดิมซึ่งมี tzinfo ครบ จึงมองไม่เห็นปัญหานี้
+    ของจริงที่ worker เจอคือแถวที่เพิ่งโหลดขึ้นมาใหม่
+    """
+    with FakeClock("2026-08-19T13:05:00+00:00"):
+        patient, _ = await _seed_day(session, tenant)
+        sysscope = system_scope(tenant)
+        await routines.materialize_day(session, sysscope, patient.patient_id)
+        await session.commit()
+
+        session.expunge_all()          # ทิ้ง identity map — บังคับให้โหลดใหม่จาก DB จริง
+        reloaded = await _reload_patient(session, sysscope, patient.patient_id)
+        row = await orchestrator.send_daily_summary(session, sysscope, reloaded)
+        await session.commit()
+        assert row is not None
+        assert row.facts["counted_jobs"] == 3
+
+
+async def _reload_patient(session, scope, patient_id):
+    from care_addons.care_patient.services import get_patient
+
+    return await get_patient(session, scope, patient_id, required_scope="care.manage")

@@ -24,8 +24,17 @@ SYSTEM_PRINCIPAL = Principal(type="service", id="care-orchestrator", display_nam
 
 @periodic_job(minute={0, 15, 30, 45})
 async def care_daily_tick(ctx: Any) -> dict:
-    """🔒 หนึ่ง tenant = หนึ่ง transaction เหมือน care_tick (RLS GUC มีอายุแค่ใน transaction)"""
-    totals = {"summaries": 0, "expired_approvals": 0}
+    """🔒 หนึ่ง tenant = หนึ่ง transaction เหมือน care_tick (RLS GUC มีอายุแค่ใน transaction)
+
+    งานของรอบนี้: สร้างงานประจำวัน → ส่งสรุปที่ถึงเวลา → ปิดคำขออนุมัติที่เลยกำหนด
+    """
+    totals = {
+        "routine_jobs": 0,
+        "careplan_jobs": 0,
+        "skipped_no_consent": 0,
+        "summaries": 0,
+        "expired_approvals": 0,
+    }
     async with get_sessionmaker()() as session:
         # หารายชื่อ tenant จาก control plane ของ kernel — ตารางโดเมนเปิด RLS อยู่
         tenants = list((await session.execute(select(Tenant.tenant_id))).scalars())
@@ -34,7 +43,7 @@ async def care_daily_tick(ctx: Any) -> dict:
         for tenant_id in tenants:
             scope = TenantScope(tenant_id=tenant_id, principal=SYSTEM_PRINCIPAL)
             await bind_tenant(session, tenant_id)
-            summary = await svc.run_daily_summaries(session, scope)
+            summary = await svc.run_cycle(session, scope)
             for key, value in summary.items():
                 totals[key] = totals.get(key, 0) + value
             await session.commit()

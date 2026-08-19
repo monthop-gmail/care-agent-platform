@@ -177,3 +177,33 @@ async def test_caregiver_acknowledge_stops_the_loop(session, tenant):
         await session.commit()
         after = len(await notifications(session, tenant, patient.patient_id))
         assert before == after, "รับเรื่องแล้วต้องไม่มีข้อความใหม่อีก"
+
+
+async def test_trail_order_survives_events_that_share_a_timestamp(session, tenant):
+    """audit ที่เรียงไม่ได้ = ตอบไม่ได้ว่าอะไรเกิดก่อนอะไร ซึ่งทำลายเหตุผลทั้งหมดของการมี audit
+
+    หลาย event ใน transaction เดียวมี occurred_at เท่ากันเป๊ะได้จริง และ Postgres
+    ไม่รับประกันลำดับของแถวที่ ORDER BY เท่ากัน — `sequence_no` เป็นตัวตัดสิน
+    """
+    from care_addons.ap_audit import services as audit_svc
+
+    with FakeClock("2026-08-19T00:30:00+00:00"):
+        patient, _ = await _seed_morning_medication(session, tenant)
+        scope = scope_for(tenant, correlation_id="corr-same-instant")
+
+        written = []
+        for kind in ("JOB_CREATED", "EXECUTION_STARTED", "STATE_TRANSITION", "JOB_COMPLETED"):
+            event = await audit_svc.emit(
+                session,
+                scope,
+                event_type=kind,
+                subject_type="record",
+                subject_id=patient.patient_id,
+            )
+            written.append(event.event_id)
+        await session.commit()
+        session.expunge_all()      # บังคับให้อ่านกลับมาจาก DB จริง ไม่ใช่จาก identity map
+
+        trail_events = await audit.trail(session, scope, "corr-same-instant")
+        assert len({e.occurred_at for e in trail_events}) == 1   # เวลาเดียวกันหมดจริง
+        assert [e.event_id for e in trail_events] == written

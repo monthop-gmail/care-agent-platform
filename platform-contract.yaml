@@ -68,6 +68,12 @@ extensions:
     detail: >-
       เพิ่ม care_event_type (additive ตาม RFC-0009) · patient_id · severity · evidence
       โดยไม่ลดทอน guarantee ใดของ event/v1 · payload_check validate ทั้งสองชั้น
+  - id: careplan/v1
+    path: contracts/careplan/v1/careplan.schema.yaml
+    extends: null
+    detail: >-
+      contract ของโดเมนเราเอง (ไม่ได้ขอให้ platform รับไปดูแล) — payload_check
+      validate แถวจริงในตาราง `care_careplan_task` กับ schema นี้ทุกครั้งที่รัน CI
 
 # ช่องว่างที่เจอจากการ implement จริง
 gaps: []

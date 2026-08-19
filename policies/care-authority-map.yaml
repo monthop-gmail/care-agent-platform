@@ -44,7 +44,10 @@ capabilities:
   line.pairing.issue:           { action_risk: medium }   # ออกรหัสจับคู่ = ให้สิทธิ์เข้าถึงข้อมูล
   care.profile.update:          { action_risk: medium }   # เปิด/ปิดความสามารถของผู้ป่วย
   appointment.write:            { action_risk: medium }   # สร้าง/ปิดนัดหมาย
-  careplan.task.write:          { action_risk: medium }
+  careplan.task.write:          { action_risk: medium }   # จดคำสั่งที่ได้รับ (ยังไม่มีผล)
+  # 🔒 การทำให้คำสั่งของหมอ "มีผลจริง" = ผู้ป่วยจะถูกเตือนให้ลงมือทำตามนั้นทุกวัน
+  #    จึงเป็น high → approval_required · ไม่ถึง critical เพราะไม่ใช่การเขียนใบยา
+  careplan.task.activate:       { action_risk: high }
   activity.step.record:         { action_risk: medium }
   inventory.item.write:         { action_risk: medium }
 

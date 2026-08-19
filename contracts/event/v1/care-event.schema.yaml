@@ -34,12 +34,14 @@ $defs:
       - care.appointment.completed
       - care.journal.recorded
       - care.question.recorded
+      - care.careplan.changed
       - care.plan.task_completed
       - care.orientation.delivered
       - care.task.step_completed
       - care.task.stalled
       - care.deviation.detected
       - care.escalated
+      - care.summary.sent
 
   Severity:
     description: >-

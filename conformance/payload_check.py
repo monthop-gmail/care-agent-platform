@@ -39,7 +39,7 @@ os.environ.setdefault("PSTACK_SECRET_KEY", "payload-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,care_routine,"
-    "care_medication,care_journal,care_appointment,care_orientation,care_orchestrator",
+    "care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_orchestrator",
 )
 
 # schema ที่ต้องมีใน registry เพื่อ resolve $ref ระหว่างไฟล์
@@ -93,16 +93,22 @@ def build_validator(schemas: dict[str, dict], schema: dict):
     return Draft202012Validator(schema, registry=registry)
 
 
-def care_event_schema(schemas: dict[str, dict]) -> dict:
-    """care-event.schema.yaml ของเรา — ตัด key ที่ไม่ใช่ JSON Schema ออก"""
+# key ที่เราเติมไว้ให้คนอ่าน แต่ไม่ใช่คำของ JSON Schema — ต้องตัดก่อน validate
+NON_SCHEMA_KEYS = ("extends", "care_rules", "careplan_rules", "description", "title")
+
+
+def local_schema(*parts: str) -> dict:
+    """contract ของโดเมนเราเอง — ตัด key ที่ไม่ใช่ JSON Schema ออก"""
     import yaml
 
-    document = yaml.safe_load(
-        (ROOT / "contracts" / "event" / "v1" / "care-event.schema.yaml").read_text(encoding="utf-8")
-    )
-    for key in ("extends", "care_rules", "description", "title"):
+    document = yaml.safe_load((ROOT.joinpath("contracts", *parts)).read_text(encoding="utf-8"))
+    for key in NON_SCHEMA_KEYS:
         document.pop(key, None)
     return document
+
+
+def care_event_schema(schemas: dict[str, dict]) -> dict:
+    return local_schema("event", "v1", "care-event.schema.yaml")
 
 
 async def run_scenario() -> tuple[list, list, list]:
@@ -125,9 +131,12 @@ async def run_scenario() -> tuple[list, list, list]:
     from care_addons.ap_tenancy import services as tenancy
     from care_addons.ap_tenancy.clock import FakeClock
     from care_addons.care_appointment import services as appointments
+    from care_addons.care_careplan import services as careplan
+    from care_addons.care_careplan.models import CareCarePlanTask
     from care_addons.care_escalation import services as jobs
     from care_addons.care_journal import services as journal
     from care_addons.care_medication import services as medications
+    from care_addons.care_orchestrator import services as orchestrator
     from care_addons.care_orientation import services as orientation
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
@@ -259,6 +268,17 @@ async def run_scenario() -> tuple[list, list, list]:
                     authority={"type": "human", "id": "user-2", "display_name": "ลูกสาว"},
                 )
 
+            # คำสั่งหลังพบหมอ → เข้าคิว → คนอนุมัติ → มีผลจริง (careplan/v1)
+            plan_task = await careplan.propose_task(
+                session, admin, patient_id=patient.patient_id, task_type="exercise",
+                description="เดินรอบบ้านหลังอาหารเย็น", frequency={"type": "daily"},
+                source={"kind": "doctor_visit"}, scheduled_times=["17:30"], duration_minutes=20,
+            )
+            await careplan.activate_task(
+                session, admin, plan_task.task_id,
+                activated_by=tenancy.Principal(type="human", id="user-2", display_name="ลูกสาว"),
+            )
+
             appointment = await appointments.create_appointment(
                 session, admin, patient_id=patient.patient_id,
                 starts_at=clock.set("2026-08-19T00:30:00+00:00") + timedelta(days=1),
@@ -291,16 +311,28 @@ async def run_scenario() -> tuple[list, list, list]:
                 )
             await session.commit()
 
+        # รอบวันของ orchestrator: สร้างงานของวัน → สรุปประจำวันถึงผู้ดูแล
+        clock.set("2026-08-19T13:30:00+00:00")   # 20:30 ตามเวลาไทย
+        async with get_sessionmaker()() as session:
+            await bind_tenant(session, tenant_id)
+            await orchestrator.run_cycle(session, system)
+            await session.commit()
+
         async with get_sessionmaker()() as session:
             await bind_tenant(session, tenant_id)
             rows = (
-                await session.execute(select(ApAuditEvent).order_by(ApAuditEvent.occurred_at))
+                await session.execute(
+                    select(ApAuditEvent).order_by(
+                        ApAuditEvent.occurred_at, ApAuditEvent.sequence_no
+                    )
+                )
             ).scalars()
             events = list(rows)
             grants = list(
                 (await session.execute(select(ApConsentGrant))).scalars()
             )
             approval_rows = list((await session.execute(select(ApApproval))).scalars())
+            plan_tasks = list((await session.execute(select(CareCarePlanTask))).scalars())
 
     decisions = [
         evaluate(capability)
@@ -312,7 +344,7 @@ async def run_scenario() -> tuple[list, list, list]:
     await dispose_engine()
     if url.startswith("sqlite"):
         CHECK_DB.unlink(missing_ok=True)
-    return events, decisions, grants, approval_rows
+    return events, decisions, grants, approval_rows, plan_tasks
 
 
 def main() -> int:
@@ -325,8 +357,9 @@ def main() -> int:
     from care_addons.ap_approval.services import as_approval
     from care_addons.ap_audit.services import as_platform_event
     from care_addons.ap_consent.services import as_consent_grant
+    from care_addons.care_careplan.services import as_careplan_task
 
-    events, decisions, grants, approvals_made = asyncio.run(run_scenario())
+    events, decisions, grants, approvals_made, plan_tasks = asyncio.run(run_scenario())
     if not events:
         print("✗ scenario ไม่ได้ผลิต event เลย — เช็คว่า scenario ยังทำงานอยู่")
         return 1
@@ -383,6 +416,12 @@ def main() -> int:
                 f"{error.json_path} — {error.message}"
             )
 
+    careplan_validator = build_validator(schemas, local_schema("careplan", "v1", "careplan.schema.yaml"))
+    for task in plan_tasks:
+        payload = as_careplan_task(task)
+        for error in careplan_validator.iter_errors(payload):
+            failures.append(f"careplan/v1 · {task.task_id}: {error.json_path} — {error.message}")
+
     for decision in decisions:
         payload = {
             **decision.as_policy_result(),
@@ -402,7 +441,7 @@ def main() -> int:
     print(
         f"✓ payload conformance ผ่าน — {len(events)} audit event (care event {care_count}) "
         f"+ {len(grants)} consent grant + {len(approvals_made)} approval "
-        f"+ {len(decisions)} policy decision "
+        f"+ {len(plan_tasks)} careplan task + {len(decisions)} policy decision "
         f"validate กับ agent-platform @ {pinned['commit'][:8]}"
     )
     return 0

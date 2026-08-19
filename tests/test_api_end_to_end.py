@@ -221,3 +221,60 @@ def test_daily_summary_over_http(client, care):
 
     again = client.post(f"/api/care/summary/{patient_id}/send", headers=headers)
     assert again.status_code == 409              # วันละครั้ง
+
+
+def test_careplan_over_http(client, care):
+    """คำสั่งหลังพบหมอ: จด → เข้าคิว → ยืนยัน → กลายเป็นงานจริง"""
+    headers, patient_id = care
+
+    proposed = client.post(
+        "/api/care/careplan",
+        headers=headers,
+        json={
+            "patient_id": patient_id,
+            "task_type": "exercise",
+            "description": "เดินรอบบ้านหลังอาหารเย็น",
+            "frequency": {"type": "daily"},
+            "source": {"kind": "doctor_visit"},
+            "scheduled_times": ["17:30"],
+            "duration_minutes": 20,
+        },
+    )
+    assert proposed.status_code == 201, proposed.text
+    task_id = proposed.json()["task_id"]
+    assert proposed.json()["status"] == "proposed"
+
+    queue = client.get("/api/platform/approvals", headers=headers).json()
+    waiting = [row for row in queue if row["subject"]["id"] == task_id]
+    assert len(waiting) == 1
+    assert waiting[0]["capability"] == "careplan.task.activate"
+
+    # ยังไม่มีบันทึก = ตอบว่าข้อมูลไม่พอ ไม่ใช่ 0%
+    adherence = client.get(f"/api/care/careplan/{task_id}/adherence", headers=headers).json()
+    assert adherence["available"] is False
+
+    activated = client.post(f"/api/care/careplan/{task_id}/activate", headers=headers)
+    assert activated.status_code == 200, activated.text
+    assert activated.json()["status"] == "active"
+    assert activated.json()["activated_by"]["type"] == "human"
+
+    # ยืนยันตรง ๆ แล้วคำขอออกจากคิว โดยไม่กลายเป็นใบอนุมัติ
+    after = client.get("/api/platform/approvals", headers=headers).json()
+    assert [row for row in after if row["subject"]["id"] == task_id] == []
+
+    paused = client.post(
+        f"/api/care/careplan/{task_id}/status",
+        headers=headers,
+        json={"status": "paused", "reason": "ปวดเข่า หมอให้พักก่อน"},
+    )
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+
+    # กลับมา active ต้องผ่านทางที่บังคับว่าต้องมีคน ไม่ใช่ /status
+    rejected = client.post(
+        f"/api/care/careplan/{task_id}/status",
+        headers=headers,
+        json={"status": "active", "reason": "กลับมาเดินต่อ"},
+    )
+    assert rejected.status_code == 422
+    assert "activate_task" in rejected.json()["detail"]

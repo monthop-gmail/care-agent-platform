@@ -244,6 +244,7 @@ repo นี้ประกาศตัวเป็น consumer ผ่าน [`pl
 5. **High-risk ต้องมี governance** — ยาเป็น `human_command_required` เสมอ แก้ config ให้หลวมกว่านี้ไม่ได้
    · สิ่งที่รอคนตัดสินรอได้ตลอดกาล **เวลาที่ผ่านไปไม่เคยอนุมัติอะไรให้** ([ADR-0009](decisions/0009-approval-waits-forever.md))
 6. **ทุก action ต้อง audit ได้** — append-only ตอบได้ว่า "ทำไม agent ถึงส่งข้อความนี้"
+   · event ที่เวลาเท่ากันยังเรียงถูกเสมอด้วย `sequence_no` — trail ที่เรียงไม่ได้ตอบคำถามนั้นไม่ได้
 7. **Data ต้อง tenant/consent aware** — RBAC อย่างเดียวไม่พอ ([ADR-0007](decisions/0007-consent-and-data-access.md))
 
 ## สำหรับทีมที่เพิ่งเข้ามา
