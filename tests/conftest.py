@@ -21,6 +21,8 @@ if "PSTACK_ADDONS_PATHS" not in os.environ:
 
 MODULES = [
     "users",
+    "tenancy",
+    "ap_consent",
     "ap_tenancy",
     "ap_audit",
     "ap_policy",

@@ -1,29 +1,10 @@
-"""รูปแบบ id กลางของ platform — identity/v1 $defs.Id
+"""shim — id format ย้ายขึ้น kernel เป็น `core.tenancy` แล้ว (pstack v0.3.0)
 
-ห้ามนิยามรูปแบบ id เองที่อื่น (ADR-0001) — ทุก addon ใช้ helper ในไฟล์นี้
+`core.tenancy.ID_PATTERN` ตั้งใจให้ตรงกับ `identity/v1 $defs.Id` ของ agent-platform
+และเรามีเทสล็อกไว้ที่ `tests/test_kernel_contract_lock.py` ว่ายังตรงกันจริง
+— ถ้า kernel ขยับ pattern เมื่อไร CI ของเราแดงทันที ไม่ต้องรอไปเจอตอน validate payload
 """
 
-from __future__ import annotations
+from core.tenancy import ID_PATTERN, InvalidId, new_id, validate_id
 
-import re
-import uuid
-
-ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
-
-
-class InvalidId(ValueError):
-    pass
-
-
-def validate_id(value: str, field: str = "id") -> str:
-    if not isinstance(value, str) or not ID_PATTERN.match(value):
-        raise InvalidId(
-            f"{field} ไม่ตรงรูปแบบ identity/v1 $defs.Id "
-            f"(lowercase, ขึ้นต้นด้วย alphanumeric, ยาวไม่เกิน 63): {value!r}"
-        )
-    return value
-
-
-def new_id(prefix: str) -> str:
-    """สร้าง id ใหม่ที่ตรง pattern — prefix ช่วยให้อ่าน log ออกว่าเป็นของอะไร"""
-    return validate_id(f"{prefix}-{uuid.uuid4().hex[:16]}", prefix)
+__all__ = ["ID_PATTERN", "InvalidId", "new_id", "validate_id"]

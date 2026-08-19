@@ -159,6 +159,47 @@ tests/          scenario tests (สำคัญกว่า unit test ในโ�
 ref/            บทสนทนา/blueprint ต้นทาง — เก็บไว้ให้ทุกทีมอ้างอิงร่วมกัน
 ```
 
+## ย้าย deployment เดิมเข้า `tenancy` ของ kernel (adopt)
+
+pstack v0.3.0 ย้าย control plane ของ multi-tenancy ขึ้น kernel — deployment ที่มีข้อมูลอยู่แล้ว
+ต้อง **rename ตารางเดิมให้ตรงชื่อ canonical ก่อนเปิดโมดูล** แล้ว migration ของ kernel จะข้าม
+create ให้เอง ทำใน transaction เดียวเสมอ (rename ล้มกลางคัน = สภาพผสม migration จะ raise เตือน)
+
+```sql
+BEGIN;
+  DO $$ BEGIN
+    IF to_regclass('public.ap_tenant') IS NULL OR to_regclass('public.tenant') IS NOT NULL
+    THEN RAISE EXCEPTION 'สภาพไม่พร้อม adopt'; END IF;
+  END $$;
+
+  ALTER TABLE ap_tenant        RENAME TO tenant;
+  ALTER TABLE ap_workspace     RENAME TO workspace;
+  ALTER TABLE ap_tenant_member RENAME TO tenant_member;
+
+  -- ⚠️ Postgres ไม่ rename constraint/index ให้ตอน rename ตาราง — ต้องทำเองทุกตัว
+  --    (runbook ของ kernel เขียนว่า PK/FK เปลี่ยนชื่อเอง ซึ่งไม่จริง — ยืนยันบน PG16 แล้ว)
+  ALTER TABLE tenant        RENAME CONSTRAINT ap_tenant_pkey                TO tenant_pkey;
+  ALTER TABLE workspace     RENAME CONSTRAINT ap_workspace_pkey             TO workspace_pkey;
+  ALTER TABLE workspace     RENAME CONSTRAINT ap_workspace_tenant_id_fkey   TO workspace_tenant_id_fkey;
+  ALTER TABLE tenant_member RENAME CONSTRAINT ap_tenant_member_pkey         TO tenant_member_pkey;
+  ALTER TABLE tenant_member RENAME CONSTRAINT ap_tenant_member_tenant_id_fkey TO tenant_member_tenant_id_fkey;
+  ALTER TABLE tenant_member RENAME CONSTRAINT uq_ap_member                  TO uq_tenant_member;
+
+  ALTER INDEX ix_ap_workspace_tenant_id     RENAME TO ix_workspace_tenant_id;
+  ALTER INDEX ix_ap_tenant_member_tenant_id RENAME TO ix_tenant_member_tenant_id;
+  ALTER INDEX ix_ap_tenant_member_user_id   RENAME TO ix_tenant_member_user_id;
+COMMIT;
+```
+
+ตรวจว่าชื่อครบก่อนบูต — ต้องได้ 6 constraint และ 3 index ตามชื่อข้างบน:
+
+```sql
+SELECT conname FROM pg_constraint
+ WHERE conrelid IN ('tenant'::regclass,'workspace'::regclass,'tenant_member'::regclass);
+```
+
+`ap_consent_grant` **ไม่ต้อง rename** — โมดูล `ap_consent` adopt ตารางเดิมต่อตามประวัติ
+
 ## Conformance กับ agent-platform
 
 repo นี้ประกาศตัวเป็น consumer ผ่าน [`platform-contract.yaml`](platform-contract.yaml)

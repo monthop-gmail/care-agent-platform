@@ -8,13 +8,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from core.clock import now
+from core.tenancy import TenantScope, new_id, validate_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit.models import ApAuditEvent
-from care_addons.ap_tenancy.clock import now
-from care_addons.ap_tenancy.ids import new_id, validate_id
-from care_addons.ap_tenancy.services import TenantScope
 
 # 7 ค่าขั้นต่ำของ event/v1 — ชุดเปิด เพิ่มได้แบบ additive แต่ลบ/เปลี่ยนความหมายไม่ได้
 PLATFORM_EVENT_TYPES = {

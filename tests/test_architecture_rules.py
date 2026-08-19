@@ -50,15 +50,25 @@ def test_ap_layer_has_no_domain_vocabulary_in_models():
     assert not offenders, "ap_* ห้ามรู้จักคำของโดเมน (ADR-0003 กฎ 1):\n" + "\n".join(offenders)
 
 
-def test_ap_manifests_depend_only_on_users_and_ap():
-    """ADR-0003 กฎ 2"""
+# โมดูลของ kernel ที่ `ap_*` พึ่งได้ — ต้องเป็นของ pstack เท่านั้น ห้ามมี care_* หลุดเข้ามา
+KERNEL_MODULES = {"users", "tenancy"}
+
+
+def test_ap_manifests_depend_only_on_kernel_and_ap():
+    """ADR-0003 กฎ 2 — `ap_*` พึ่ง kernel ของ pstack กับ `ap_*` ด้วยกันเท่านั้น
+
+    เดิมกฎเขียนว่า "users + ap_*" ตอนที่ kernel ยังไม่มี tenancy — พอ tenancy ขึ้น kernel
+    (pstack v0.3.0) `ap_*` พึ่ง `tenancy` ได้ เพราะเจตนาของกฎคือ **ห้ามพึ่งโดเมน**
+    ไม่ใช่ห้ามพึ่ง kernel
+    """
     import ast
 
     for module in AP_MODULES:
         manifest = ast.literal_eval((ADDONS / module / "__manifest__.py").read_text(encoding="utf-8"))
         for dependency in manifest.get("depends", []):
-            assert dependency == "users" or dependency.startswith("ap_"), (
-                f"{module} depends on '{dependency}' — ap_* พึ่งได้แค่ users ของ pstack กับ ap_* ด้วยกัน"
+            assert dependency in KERNEL_MODULES or dependency.startswith("ap_"), (
+                f"{module} depends on '{dependency}' — ap_* พึ่งได้แค่ kernel ของ pstack "
+                f"({', '.join(sorted(KERNEL_MODULES))}) กับ ap_* ด้วยกัน"
             )
 
 

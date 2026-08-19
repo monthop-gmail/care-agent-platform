@@ -38,7 +38,7 @@ os.environ.setdefault("PSTACK_DATABASE_URL", f"sqlite+aiosqlite:///{CHECK_DB}")
 os.environ.setdefault("PSTACK_SECRET_KEY", "payload-check")
 os.environ.setdefault(
     "PSTACK_MODULES",
-    "users,ap_tenancy,ap_audit,ap_policy,care_patient,care_escalation,care_routine,"
+    "users,tenancy,ap_consent,ap_tenancy,ap_audit,ap_policy,care_patient,care_escalation,care_routine,"
     "care_medication,care_journal,care_appointment,care_orientation",
 )
 
@@ -116,10 +116,10 @@ async def run_scenario() -> tuple[list, list, list]:
     from sqlalchemy import select
 
     from care_addons.ap_audit.models import ApAuditEvent
+    from care_addons.ap_consent.models import ApConsentGrant
     from care_addons.ap_policy.engine import evaluate
     from care_addons.ap_tenancy import services as tenancy
     from care_addons.ap_tenancy.clock import FakeClock
-    from care_addons.ap_tenancy.models import ApConsentGrant
     from care_addons.care_appointment import services as appointments
     from care_addons.care_escalation import services as jobs
     from care_addons.care_journal import services as journal
@@ -290,7 +290,7 @@ def main() -> int:
     schemas = fetch_schemas(pinned, offline=offline)
 
     from care_addons.ap_audit.services import as_platform_event
-    from care_addons.ap_tenancy.services import as_consent_grant
+    from care_addons.ap_consent.services import as_consent_grant
 
     events, decisions, grants = asyncio.run(run_scenario())
     if not events:

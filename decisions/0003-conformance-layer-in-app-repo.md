@@ -35,9 +35,26 @@ care_addons/
 
 1. **ห้าม import อะไรจาก `care_*`** — `ap_*` ต้องไม่รู้จักคำว่า patient / medication / caregiver เลย
    (มี test บังคับข้อนี้ที่ `tests/test_ap_layer_is_domain_free.py`)
-2. `depends` ใน manifest อ้างได้เฉพาะ `users` ของ pstack กับ `ap_*` ด้วยกันเอง
+2. `depends` ใน manifest อ้างได้เฉพาะ **โมดูลของ kernel** (`users` · `tenancy`) กับ `ap_*` ด้วยกันเอง
+   — เจตนาคือห้ามพึ่งโดเมน ไม่ใช่ห้ามพึ่ง kernel · เดิมเขียนว่า "`users` เท่านั้น" ตอนที่ kernel
+   ยังไม่มี `tenancy` (แก้ 2026-08-19 หลัง pstack v0.3.0)
 3. ทุกชื่อตารางขึ้นต้น `ap_` และทุก public API อยู่ใต้ `/api/platform/...`
 4. schema ของ payload ต้อง `$ref` ไปที่ contract ของ `agent-platform` ไม่ใช่นิยามซ้ำ
+
+## อัปเดต 2026-08-19 — `tenancy` ขึ้น kernel แล้ว รอบที่ 1
+
+pstack ออก [PR#9](https://github.com/willpower-institute/pstack/pull/9) (v0.3.0 draft) ตามที่เราเสนอ
+ฝั่งเรา adopt ตามนี้:
+
+| ของเดิมใน `ap_tenancy` | ปลายทาง |
+|---|---|
+| `ApTenant` · `ApWorkspace` · `ApTenantMember` + `TenantScope`/`scoped`/`assert_same_tenant`/`get_scope` | kernel `tenancy` + `core.tenancy` |
+| `clock.py` | kernel `core.clock` |
+| `ids.py` | kernel `core.tenancy` (`ID_PATTERN` ตรงกับ `identity/v1` — มีเทสล็อกไว้ที่ `tests/test_kernel_contract_lock.py`) |
+| `ApConsentGrant` + service + endpoint | **โมดูลใหม่ `ap_consent`** — consent เป็น governance ไม่ใช่ infra |
+
+`ap_tenancy` เหลือเป็น **shim ที่ re-export อย่างเดียว** ตามที่ ADR นี้เขียนไว้ว่าจะทำ shim หนึ่งรอบ
+ก่อนลบ — รอบที่ 2 จะย้าย import ทั้ง 111 จุดแล้วลบโมดูลนี้ทิ้ง
 
 **หนี้ที่รู้ตัวแล้ว:** `ap_audit` มีคอลัมน์ชื่อ `care_event_type` ซึ่งเป็นคำของโดเมน
 (เทสตรวจเฉพาะคำว่า patient/medication/caregiver จึงไม่จับ) ตอน promote ขึ้น kernel
