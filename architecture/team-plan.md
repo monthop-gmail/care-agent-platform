@@ -154,8 +154,9 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
 |---|---|---|
 | [agent-platform#14](https://github.com/monthop-gmail/agent-platform/issues/14) | `SubjectType` ไม่มีค่าสำหรับบันทึกของโดเมน | ✅ platform เพิ่มค่า `record` ให้แล้ว — เราย้ายจาก `artifact` มาใช้ ([ADR-0004](../decisions/0004-care-event-vocabulary.md)) |
 | [agent-platform#15](https://github.com/monthop-gmail/agent-platform/issues/15) | ยังไม่มี `consent/v1` | ✅ รับเข้าเป็น ADR-0012 + publish แล้ว — implementation ของเราปรับตามครบ รวมถึงลบ field `status` ที่ contract ห้าม ([ADR-0007](../decisions/0007-consent-and-data-access.md)) |
+| [agent-platform#25](https://github.com/monthop-gmail/agent-platform/issues/25) | `consent/v1` ตรวจได้แค่ revoked/expired — ใบที่ผูกกับข้อเท็จจริงที่เปลี่ยนได้ (หมอลาออกจากโรงพยาบาล) ยังใช้ได้ต่อ | 🟡 เปิดไว้ 2026-08-20 · ไม่บล็อก — เราทำ `conditions` + registry ที่ฝั่งเราแล้ว ([ADR-0010](../decisions/0010-organizations-are-not-tenants.md)) รอ platform ตัดสินว่าจะรับขึ้น contract ไหม |
 
-ช่อง `gaps` ใน [`platform-contract.yaml`](../platform-contract.yaml) ว่างแล้ว — ที่ปิดไปย้ายไปอยู่ `resolved_gaps`
+ช่อง `gaps` ใน [`platform-contract.yaml`](../platform-contract.yaml) มี 1 ข้อที่เปิดอยู่ (agent-platform#25) — ที่ปิดไปแล้วย้ายไปอยู่ `resolved_gaps`
 **เจอช่องว่างใหม่เมื่อไร เปิด issue ที่ต้นทางแล้วเพิ่มกลับเข้า `gaps` ด้วย** เพื่อให้ platform
 เห็นสถานะจริงของ consumer โดยไม่ต้องมาถาม
 
