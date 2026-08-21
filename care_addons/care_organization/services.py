@@ -261,7 +261,7 @@ async def _membership_condition_holds(
 
     🔒 fail closed — ข้อมูลไม่ครบ/ไม่เจอสมาชิกภาพ = ไม่ให้ผ่าน
     """
-    organization_id = condition.get("organization_id")
+    organization_id = (condition.get("params") or {}).get("organization_id")
     if not organization_id:
         return False
     return (
@@ -325,7 +325,9 @@ async def grant_clinical_access(
         granted_by=granted_by,
         authority_basis=authority_basis,
         expires_at=expires_at,
-        conditions=[{"kind": CONDITION_KIND, "organization_id": organization_id}],
+        # รูปตาม consent/v1 v1.1.0 — ค่าของโดเมนอยู่ในกล่อง `params`
+        # ชั้นนอกสงวนไว้ให้ platform เพิ่ม field กลางทีหลังแบบ additive (ADR-0014)
+        conditions=[{"kind": CONDITION_KIND, "params": {"organization_id": organization_id}}],
     )
     await audit.emit(
         session,
@@ -377,7 +379,7 @@ async def open_access(
         organization_id = None
         for condition in grant.conditions or []:
             if condition.get("kind") == CONDITION_KIND:
-                organization_id = condition.get("organization_id")
+                organization_id = (condition.get("params") or {}).get("organization_id")
                 holds = (
                     await active_membership(
                         session,

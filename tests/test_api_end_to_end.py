@@ -432,7 +432,7 @@ def test_organization_access_over_http(client, care):
     assert granted.json()["purpose"] == "clinical_care"
     assert "care.manage" not in granted.json()["scopes"]
     assert granted.json()["conditions"] == [
-        {"kind": "org_membership", "organization_id": org_id}
+        {"kind": "org_membership", "params": {"organization_id": org_id}}
     ]
 
     access = client.get(

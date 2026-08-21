@@ -61,8 +61,9 @@ async def test_s16_doctor_from_the_granted_organization_can_read(session, tenant
 
         assert grant.purpose == "clinical_care"
         assert "clinical.read" in grant.scopes
+        # รูปตาม consent/v1 v1.1.0 — ค่าของโดเมนอยู่ในกล่อง params
         assert grant.conditions == [
-            {"kind": "org_membership", "organization_id": hospital.organization_id}
+            {"kind": "org_membership", "params": {"organization_id": hospital.organization_id}}
         ]
 
         # หมอเข้าถึงข้อมูลทางคลินิกได้
@@ -317,3 +318,134 @@ async def test_daily_summary_shows_stale_clinical_access(session, tenant):
         )
         await session.commit()
         assert "ควรเพิกถอน" in tomorrow.text
+
+
+# ── บันทึกว่า "อนุญาตด้วยใบไหน และเงื่อนไขผ่านตอนไหน" (consent/v1 $defs.Evaluation) ──
+
+async def test_access_records_which_grant_allowed_it_and_that_conditions_passed(session, tenant):
+    """🔒 ปีหน้า replay ต้องไม่สรุปว่าการเข้าถึงเมื่อปีที่แล้วไม่ชอบ เพราะวันนี้หมอลาออกไปแล้ว
+
+    สิ่งที่ต้องเก็บคือ **ผลที่ถูกแช่แข็ง** ไม่ใช่ตัวชี้ไปยังใบที่จะถูกประเมินใหม่ (ADR-0016)
+    """
+    from care_addons.care_journal import services as journal
+    from tests.conftest import audit_events
+
+    with FakeClock("2026-08-21T01:00:00+00:00"):
+        patient, _ = await setup_patient(session, tenant)
+        hospital, _, _ = await _hospital_with_doctor(session, tenant, patient.patient_id)
+        # ให้หมอบันทึกสิ่งที่สังเกตได้ — action ที่ต้องผ่านด่าน consent ก่อน
+        await consent.grant_consent(
+            session,
+            scope_for(tenant),
+            subject_id=patient.patient_id,
+            grantee=DOCTOR,
+            scopes=["journal.write"],
+            purpose="clinical_care",
+            granted_by=ADMIN,
+            authority_basis="ผู้ดูแลหลักอนุญาต",
+            conditions=[
+                {"kind": "org_membership", "params": {"organization_id": hospital.organization_id}}
+            ],
+        )
+        await session.commit()
+
+        await journal.record(
+            session, doctor_scope(tenant), patient_id=patient.patient_id,
+            text="ผู้ป่วยบอกว่าเวียนหัวตอนเช้า",
+        )
+        await session.commit()
+
+        events = await audit_events(session, tenant, patient.patient_id)
+        with_consent = [e for e in events if e.consent]
+        assert with_consent, "event ที่เกิดหลังตรวจสิทธิ์ต้องพก Evaluation ไปด้วย"
+
+        evaluation = with_consent[-1].consent
+        assert evaluation["satisfied"] is True
+        assert evaluation["conditions_checked"] == ["org_membership"]
+        assert evaluation["grant_id"]
+        assert evaluation["evaluated_at"]
+
+
+async def test_a_refused_access_is_recorded_not_swallowed(session, tenant):
+    """การเข้าถึงที่ถูกปฏิเสธคือสิ่งที่ audit ต้องบันทึกที่สุด"""
+    from tests.conftest import audit_events
+
+    with FakeClock("2026-08-21T01:00:00+00:00"):
+        patient, _ = await setup_patient(session, tenant)
+        _, membership, _ = await _hospital_with_doctor(session, tenant, patient.patient_id)
+        await session.commit()
+
+        await orgs.end_membership(
+            session, scope_for(tenant), membership.membership_id, reason="ลาออก"
+        )
+        await session.commit()
+
+        with pytest.raises(consent.ConsentDenied):
+            await consent.require_consent(
+                session, doctor_scope(tenant),
+                subject_id=patient.patient_id, required_scope="clinical.read",
+            )
+        await session.commit()
+
+        denied = [
+            e for e in await audit_events(session, tenant)
+            if (e.error or {}).get("code") == "care.consent.denied"
+        ]
+        assert len(denied) == 1
+        # 🔒 บันทึกทั้งผ่านและไม่ผ่าน — false ไม่ได้แปลว่าใบไม่มีอยู่
+        assert denied[0].consent["satisfied"] is False
+        assert denied[0].consent["conditions_checked"] == ["org_membership"]
+
+
+async def test_granting_and_revoking_consent_emit_events(session, tenant):
+    """consent_rules ข้อ 2 — การให้ · การใช้ · และการเพิกถอน ต้องออก event ทุกครั้ง
+
+    เราขาดข้อนี้มาตลอดจนกระทั่ง event/v1 v1.6.0 มี event type ให้ใช้
+    """
+    from tests.conftest import audit_events
+
+    with FakeClock("2026-08-21T01:00:00+00:00"):
+        patient, _ = await setup_patient(session, tenant)
+        scope = scope_for(tenant)
+        grant = await consent.grant_consent(
+            session, scope, subject_id=patient.patient_id, grantee=DOCTOR,
+            scopes=["clinical.read"], purpose="clinical_care",
+            granted_by=ADMIN, authority_basis="ผู้ดูแลหลัก",
+        )
+        await session.commit()
+
+        granted = [e for e in await audit_events(session, tenant) if e.event_type == "CONSENT_GRANTED"]
+        assert any(e.subject_id == grant.grant_id for e in granted)
+
+        await consent.revoke_consent(session, scope, grant.grant_id, reason="ไม่ได้รักษาที่นี่แล้ว")
+        await session.commit()
+
+        revoked = [e for e in await audit_events(session, tenant) if e.event_type == "CONSENT_REVOKED"]
+        assert [e.subject_id for e in revoked] == [grant.grant_id]
+        assert revoked[0].transition["to"] == "revoked"
+
+
+async def test_condition_shape_is_enforced_at_grant_time(session, tenant):
+    """key ที่พิมพ์ผิดในชั้นนอกต้องโดนจับ — ไม่ใช่ valid เงียบ ๆ แล้วเงื่อนไขไม่ถูกตรวจ"""
+    with FakeClock("2026-08-21T01:00:00+00:00"):
+        patient, _ = await setup_patient(session, tenant)
+        scope = scope_for(tenant)
+
+        with pytest.raises(ValueError, match="params"):
+            await consent.grant_consent(
+                session, scope, subject_id=patient.patient_id, grantee=DOCTOR,
+                scopes=["clinical.read"], purpose="clinical_care",
+                granted_by=ADMIN, authority_basis="ผู้ดูแลหลัก",
+                # รูปเก่าที่เราเคย ship — ตอนนี้ contract ไม่รับแล้ว
+                conditions=[{"kind": "org_membership", "organization_id": "org-x"}],
+            )
+        await session.rollback()
+
+        with pytest.raises(ValueError, match="รูปของ consent/v1"):
+            await consent.grant_consent(
+                session, scope, subject_id=patient.patient_id, grantee=DOCTOR,
+                scopes=["clinical.read"], purpose="clinical_care",
+                granted_by=ADMIN, authority_basis="ผู้ดูแลหลัก",
+                conditions=[{"kind": "OrgMembership", "params": {}}],
+            )
+        await session.rollback()

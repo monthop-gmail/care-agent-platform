@@ -19,6 +19,10 @@ from care_addons.ap_audit.models import ApAuditEvent
 
 # 7 ค่าขั้นต่ำของ event/v1 — ชุดเปิด เพิ่มได้แบบ additive แต่ลบ/เปลี่ยนความหมายไม่ได้
 PLATFORM_EVENT_TYPES = {
+    # consent/v1 บังคับให้การให้และการเพิกถอนออก event ทุกครั้ง — event/v1 v1.6.0
+    # เพิ่งมี event type ให้ใช้ (ไม่มี CONSENT_USED โดยเจตนา · การใช้บันทึกที่ field `consent`)
+    "CONSENT_GRANTED",
+    "CONSENT_REVOKED",
     "JOB_CREATED",
     "STATE_TRANSITION",
     "GOVERNANCE_DECISION",
@@ -87,6 +91,7 @@ async def emit(
     source_kind: str = "internal",
     source_system: str | None = None,
     error: dict | None = None,
+    consent: dict | None = None,
 ) -> ApAuditEvent:
     if not scope.tenant_id:
         raise EventRejected("event ที่ resolve tenant ไม่ได้ ให้ reject ที่ intake — ห้ามเดา tenant ให้")
@@ -114,6 +119,20 @@ async def emit(
         # event/v1 กำหนด transition.from/to เป็น string — การสร้างของใหม่ที่ยังไม่มีสถานะเดิม
         # ต้องแสดงด้วยการ "ไม่มี key" ไม่ใช่ null (jsonschema ปฏิเสธ null)
         transition = {k: v for k, v in transition.items() if v is not None}
+
+    # ผลการประเมินความยินยอมที่ถูกแช่แข็งไว้ตอนตรวจสิทธิ์ — หยิบครั้งเดียวแล้วหายไป
+    #
+    # 🔒 อ่านจาก `session.info` แทนการ import `ap_consent` เพราะโมดูลนั้นอยู่ชั้นบนของเรา
+    #    (มันเรียก emit() อยู่) — import กลับจะเป็นวงกลม · คีย์เป็นสัญญาระหว่างสองโมดูล
+    if consent is None:
+        consent = session.info.pop("ap_consent.evaluation", None)
+    if consent is not None:
+        missing = {"grant_id", "evaluated_at", "satisfied"} - set(consent)
+        if missing:
+            raise EventRejected(
+                f"consent evaluation ต้องเป็น object ตาม consent/v1 $defs.Evaluation — "
+                f"ขาด {sorted(missing)}"
+            )
 
     attrs = dict(attributes or {})
     leaked = FORBIDDEN_ATTRIBUTE_KEYS & set(attrs)
@@ -145,6 +164,7 @@ async def emit(
         evidence=evidence,
         attributes=attrs or None,
         error=error,
+        consent=consent,
     )
     session.add(event)
     await session.flush()
@@ -178,6 +198,8 @@ def as_platform_event(event: ApAuditEvent, *, lift: tuple[str, ...] = ()) -> dic
             payload[field] = value
     if event.actor is not None:
         payload["actor"] = event.actor
+    if event.consent is not None:
+        payload["consent"] = event.consent
     if event.transition is not None:
         payload["transition"] = event.transition
     if event.policy_result is not None:
