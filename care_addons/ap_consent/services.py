@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
@@ -20,6 +21,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from care_addons.ap_consent.models import ApConsentGrant
 
 logger = logging.getLogger(__name__)
+
+# consent/v1 $defs.Condition — schema บังคับแค่รูปของชื่อ ไม่ใช่รายการค่า (ชุดเปิด)
+CONDITION_KIND_PATTERN = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
+
+# ที่เก็บผลการประเมินล่าสุดใน session — `ap_audit` อ่านคีย์นี้เพื่อแนบลง event ถัดไป
+#
+# 🔒 ใช้ session.info แทนการ import ข้ามโมดูล เพราะ `ap_audit` เป็นชั้นล่างของ `ap_consent`
+#    (consent depends audit) การให้ audit import consent จะเป็นวงกลม
+#    · คีย์นี้เป็นสัญญาระหว่างสองโมดูล เปลี่ยนต้องแก้ทั้งคู่พร้อมกัน
+EVALUATION_KEY = "ap_consent.evaluation"
 
 
 class ConsentDenied(PermissionError):
@@ -51,6 +62,19 @@ async def grant_consent(
         raise ValueError("consent ต้องระบุ purpose — ความยินยอมที่ไม่บอกวัตถุประสงค์ตอบ audit ไม่ได้")
     for condition in conditions or []:
         kind = (condition or {}).get("kind")
+        if not isinstance(kind, str) or not CONDITION_KIND_PATTERN.match(kind):
+            raise ValueError(
+                f"condition.kind ไม่ตรงรูปของ consent/v1: {kind!r} "
+                f"(ต้องเป็น ^[a-z][a-z0-9_]{{2,63}}$)"
+            )
+        # 🔒 consent/v1 ปิด additionalProperties ที่ตัวเงื่อนไข — คำของโดเมนต้องอยู่ใน params
+        #    ไม่งั้น key ที่พิมพ์ผิดจะ valid เงียบ ๆ แล้วเงื่อนไขจะไม่ถูกตรวจอย่างที่ตั้งใจ
+        extra = set(condition) - {"kind", "params"}
+        if extra:
+            raise ValueError(
+                f"condition มี key นอก {{kind, params}}: {sorted(extra)} "
+                f"— ค่าของโดเมนต้องอยู่ในกล่อง params (consent/v1 v1.1.0)"
+            )
         if condition_checker(kind) is None:
             raise ValueError(
                 f"เงื่อนไข '{kind}' ไม่มีตัวตรวจที่ลงทะเบียนไว้ — ใบที่ตรวจเงื่อนไขไม่ได้ "
@@ -79,6 +103,27 @@ async def grant_consent(
     )
     session.add(grant)
     await session.flush()
+
+    # 🔒 consent_rules ข้อ 2: การให้ · การใช้ · และการเพิกถอน ต้องออก audit event ทุกครั้ง
+    #    (เราขาดข้อนี้มาตลอดจนกระทั่ง event/v1 v1.6.0 มี event type ให้ใช้)
+    from care_addons.ap_audit import services as audit
+
+    await audit.emit(
+        session,
+        scope,
+        event_type="CONSENT_GRANTED",
+        subject_type="record",
+        subject_id=grant.grant_id,
+        attributes={
+            "record_type": "consent_grant",
+            "subject_id": grant.subject_id,
+            "grantee_id": grant.grantee_id,
+            "scopes": list(grant.scopes or []),
+            "purpose": grant.purpose,
+            "conditions": [c.get("kind") for c in (grant.conditions or [])],
+            "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
+        },
+    )
     return grant
 
 
@@ -101,6 +146,23 @@ async def revoke_consent(
     grant.revoked_by_id = scope.principal.id
     grant.revoked_reason = reason.strip()
     await session.flush()
+
+    from care_addons.ap_audit import services as audit
+
+    await audit.emit(
+        session,
+        scope,
+        event_type="CONSENT_REVOKED",
+        subject_type="record",
+        subject_id=grant.grant_id,
+        transition={"from": "active", "to": "revoked", "reason": grant.revoked_reason},
+        attributes={
+            "record_type": "consent_grant",
+            "subject_id": grant.subject_id,
+            "grantee_id": grant.grantee_id,
+            "scopes": list(grant.scopes or []),
+        },
+    )
 
 
 # ── เงื่อนไขที่ต้องยังเป็นจริงตอนเข้าถึง ────────────────────────────────────────
@@ -141,6 +203,21 @@ async def conditions_hold(
     return True
 
 
+def _remember_evaluation(session: AsyncSession, evaluation: dict) -> None:
+    """แช่แข็งผลไว้ให้ event ถัดไปหยิบไปแนบ (consent/v1 $defs.Evaluation)
+
+    🔒 การรู้แค่ `grant_id` แล้วไปประเมินใหม่ทีหลังจะได้คำตอบของ *วันที่ประเมิน*
+       ไม่ใช่ของ *วันที่เข้าถึง* — หมอที่ลาออกไปแล้ววันนี้จะทำให้ replay สรุปว่า
+       การเข้าถึงเมื่อปีที่แล้วไม่ชอบ ทั้งที่ตอนนั้นเขายังสังกัดอยู่ (ADR-0016)
+    """
+    session.info[EVALUATION_KEY] = evaluation
+
+
+def take_evaluation(session: AsyncSession) -> dict | None:
+    """หยิบผลล่าสุดออกมา **ครั้งเดียว** — กันไม่ให้ไปติดกับ event อื่นที่ไม่เกี่ยวกัน"""
+    return session.info.pop(EVALUATION_KEY, None)
+
+
 async def has_consent(
     session: AsyncSession, scope: TenantScope, *, subject_id: str, required_scope: str
 ) -> bool:
@@ -168,7 +245,20 @@ async def has_consent(
             continue
         if required_scope not in (grant.scopes or []) and "care.manage" not in (grant.scopes or []):
             continue
-        if not await conditions_hold(session, scope, grant):
+        checked = [c.get("kind") for c in (grant.conditions or []) if c.get("kind")]
+        satisfied = await conditions_hold(session, scope, grant)
+        # บันทึกทั้งผ่านและไม่ผ่าน — `satisfied: false` ไม่ได้แปลว่าใบไม่มีอยู่
+        # แต่แปลว่าตอนนั้นใช้ไม่ได้ (consent/v1 $defs.Evaluation)
+        _remember_evaluation(
+            session,
+            {
+                "grant_id": grant.grant_id,
+                "evaluated_at": current.isoformat(),
+                "satisfied": satisfied,
+                **({"conditions_checked": checked} if checked else {}),
+            },
+        )
+        if not satisfied:
             continue
         return True
     return False
@@ -205,9 +295,30 @@ def as_consent_grant(grant: ApConsentGrant) -> dict:
 async def require_consent(
     session: AsyncSession, scope: TenantScope, *, subject_id: str, required_scope: str
 ) -> None:
-    if not await has_consent(
-        session, scope, subject_id=subject_id, required_scope=required_scope
-    ):
-        raise ConsentDenied(
-            f"{scope.principal.id} ไม่มี consent '{required_scope}' สำหรับ {subject_id}"
-        )
+    """ผ่านหรือ raise — และ **ไม่ว่าทางไหนผลการประเมินต้องไม่ค้างอยู่ใน session**
+
+    🔒 การเข้าถึงที่ถูกปฏิเสธคือสิ่งที่ audit ต้องบันทึกที่สุด — ไม่ใช่สิ่งที่หายไปเงียบ ๆ
+       และถ้าไม่บันทึกตรงนี้ ผลที่แช่แข็งไว้จะไปติดกับ event ถัดไปที่ไม่เกี่ยวข้องกัน
+    """
+    if await has_consent(session, scope, subject_id=subject_id, required_scope=required_scope):
+        return
+
+    from care_addons.ap_audit import services as audit
+
+    await audit.emit(
+        session,
+        scope,
+        event_type="EXECUTION_FAILED",
+        subject_type="record",
+        subject_id=subject_id,
+        error=audit.make_error(
+            "care.consent.denied",
+            "authorization",
+            f"ไม่มีความยินยอม '{required_scope}' สำหรับข้อมูลของ subject นี้",
+            retryable=False,
+        ),
+        attributes={"record_type": "consent_check", "required_scope": required_scope},
+    )
+    raise ConsentDenied(
+        f"{scope.principal.id} ไม่มี consent '{required_scope}' สำหรับ {subject_id}"
+    )

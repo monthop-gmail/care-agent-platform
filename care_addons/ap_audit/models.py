@@ -64,3 +64,7 @@ class ApAuditEvent(Base):
     # 🔒 ต้องเป็น object ตาม error/v1 ไม่ใช่ข้อความอิสระ — retry policy และ audit
     #    ต้องตัดสินใจจาก category ได้โดยไม่ต้อง parse ข้อความ
     error: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # ผลการประเมินความยินยอม ณ วินาทีที่เข้าถึง (consent/v1 $defs.Evaluation)
+    # 🔒 เก็บ **ผลที่แช่แข็งแล้ว** ไม่ใช่ตัวชี้ไปยังใบ — ใบที่มีเงื่อนไขตอบตัวเองไม่ได้
+    #    การประเมินใหม่ทีหลังจะได้คำตอบของวันที่ประเมิน ไม่ใช่ของวันที่เข้าถึง (ADR-0016)
+    consent: Mapped[dict | None] = mapped_column(JSON, nullable=True)

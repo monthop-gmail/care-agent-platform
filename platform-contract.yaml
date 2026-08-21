@@ -15,6 +15,7 @@ contracts:
   - capability/v1   # ActionRisk — ผูกกับ capability ไม่ใช่กับ request
   - error/v1        # error ใน audit event เป็น object ตาม taxonomy นี้ ไม่ใช่ข้อความอิสระ
   - consent/v1      # ความยินยอมเข้าถึงข้อมูลของบุคคล (ap_consent) — เสนอโดย repo นี้เอง (ADR-0012)
+                    # v1.1.0 `conditions` + v1.2.0 `Evaluation` มาจากเคสจริงของ repo นี้ (ADR-0014/0016)
   - approval/v1     # คำตัดสินของผู้มีอำนาจหลังจาก policy บอกว่าต้องขออนุมัติ (ap_approval)
                     # decision immutable · ไม่มี auto-approve · ผู้ยื่นตัดสินให้ตัวเองไม่ได้
 
@@ -25,7 +26,7 @@ not_yet:
 
 conformance:
   status: passing
-  last_verified: "2026-08-19"
+  last_verified: "2026-08-21"
 
   # ครบ 3 ข้อของ ADR-0006:
   #   1. manifest            — ไฟล์นี้
@@ -89,17 +90,28 @@ extensions:
       ที่ต้องคง `source` ไว้ตลอดไปตาม event/v1
 
 # ช่องว่างที่เจอจากการ implement จริง
-gaps:
-  - id: consent-conditions-that-must-still-hold
-    detail: >-
-      `consent/v1` ตรวจได้แค่ "ใบยังไม่หมดอายุ/ไม่ถูกเพิกถอน" แต่ใบยินยอมจำนวนหนึ่ง
-      ผูกกับ **ข้อเท็จจริงที่เปลี่ยนได้** — เช่น "หมอคนนี้ในฐานะแพทย์ของโรงพยาบาลนั้น"
-      ซึ่งต้องเป็นเท็จทันทีที่เขาลาออก ไม่ใช่รอให้ใครไปกดเพิกถอน
-      เราแก้ที่ repo นี้ด้วยฟิลด์ `conditions` + registry ของตัวตรวจ (ADR-0010)
-      และเสนอให้ platform พิจารณารับเข้า contract
-    tracked_by: https://github.com/monthop-gmail/agent-platform/issues/25
+gaps: []
 
 resolved_gaps:
+  - id: consent-conditions-that-must-still-hold
+    detail: >-
+      `consent/v1` ตรวจได้แค่ "ใบยังไม่หมดอายุ/ไม่ถูกเพิกถอน" แต่ใบที่ผูกกับข้อเท็จจริง
+      ที่เปลี่ยนได้ (หมอลาออกจากโรงพยาบาล) ยังใช้ได้ต่อทั้งที่เงื่อนไขไม่เป็นจริงแล้ว
+    tracked_by: https://github.com/monthop-gmail/agent-platform/issues/25
+    resolved_by: >-
+      `consent/v1` v1.1.0 รับ `conditions` เข้า contract (ADR-0014) พร้อมกฎ fail-closed
+      ทั้ง 4 ข้อของเรา + ข้อที่ห้า "เงื่อนไข narrow ได้อย่างเดียว ห้ามขยายสิทธิ์" ·
+      ปรับรูปเป็น `{kind, params}` + `additionalProperties: false` — repo นี้ migrate แล้ว
+      ทั้งโค้ด ตัวตรวจ และข้อมูลเดิม (ap_consent 0003_conditions_params)
+  - id: no-record-of-which-consent-allowed-access
+    detail: >-
+      หลังมี `conditions` ใบตอบตัวเองไม่ได้ — replay ที่ประเมินใหม่ทีหลังจะได้คำตอบ
+      ของวันที่ประเมิน ไม่ใช่ของวันที่เข้าถึง แล้วสรุปว่าการเข้าถึงในอดีตไม่ชอบ
+      ทั้งที่ตอนนั้นถูกต้อง
+    tracked_by: https://github.com/monthop-gmail/agent-platform/issues/25
+    resolved_by: >-
+      `consent/v1` v1.2.0 `$defs.Evaluation` + `event/v1` v1.4.0 field `consent` (ADR-0016)
+      — เราเก็บผลที่แช่แข็งแล้วลงทุก event ที่เกิดหลังตรวจสิทธิ์ รวมถึงการเข้าถึงที่ถูกปฏิเสธ
   - id: subject-type-for-domain-records
     detail: SubjectType ไม่มีค่าสำหรับบันทึกของโดเมน — เคย map เป็น artifact ซึ่งความหมายเพี้ยน
     tracked_by: https://github.com/monthop-gmail/agent-platform/issues/14
