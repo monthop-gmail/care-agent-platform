@@ -30,6 +30,15 @@ PLATFORM_EVENT_TYPES = {
     "EXECUTION_STARTED",
     "EXECUTION_FAILED",
     "JOB_COMPLETED",
+    # ใบปิดท้ายของ trail — ออกที่ **ทุก terminal** ไม่ใช่เฉพาะที่จบสวย
+    # (devfactory-core RFC-0012 · semantics 1.2)
+    #
+    # 🔒 ต่างจาก JOB_COMPLETED โดยเจตนา:
+    #    JOB_COMPLETED = "งานถูกส่งมอบไหม"  (คำแถลงเรื่องผลลัพธ์)
+    #    JOB_SETTLED   = "trail นี้จบหรือยัง" (คำแถลงเรื่องบันทึก)
+    #    ถ้าใช้ตัวเดียวกัน ผู้อ่านที่นับ JOB_COMPLETED ว่า "สำเร็จ" จะนับยาที่ผู้ป่วยไม่ได้กิน
+    #    เป็นความสำเร็จเงียบ ๆ — ซึ่งเป็นสิ่งที่เราทำอยู่จริงก่อนหน้านี้
+    "JOB_SETTLED",
 }
 
 SUBJECT_TYPES = {

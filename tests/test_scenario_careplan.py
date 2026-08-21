@@ -329,3 +329,45 @@ async def test_careplan_tasks_do_not_leak_across_tenants(session, tenant):
         )
         assert await careplan.list_tasks(session, other_scope, patient.patient_id) == []
         await use_tenant(session, tenant)
+
+
+async def test_pausing_an_instruction_cancels_the_work_already_created_for_today(session, tenant):
+    """🔒 หยุดคำสั่งต้องหยุดสิ่งที่ค้างอยู่ด้วย ไม่ใช่แค่หยุดสร้างใหม่
+
+    งานของวันนี้ถูกสร้างไว้ตอนเช้าแล้ว — ถ้าไม่ยกเลิก ผู้ป่วยจะยังถูกเตือนให้เดิน
+    ทั้งที่หมอสั่งให้พักเพราะปวดเข่า
+    """
+    from care_addons.care_escalation import services as jobs
+
+    with FakeClock("2026-08-19T01:00:00+00:00"):
+        patient, _ = await setup_patient(session, tenant)
+        scope = scope_for(tenant)
+        task = await _propose_walk(session, tenant, patient.patient_id)
+        await careplan.activate_task(
+            session, scope, task.task_id, activated_by=Principal(type="human", id="user-1")
+        )
+        sysscope = system_scope(tenant)
+        created = await careplan.materialize_day(
+            session, sysscope, patient.patient_id, for_date=DAY
+        )
+        await session.commit()
+        assert len(created) == 1
+
+        await careplan.set_status(
+            session, scope, task.task_id, status="paused", reason="ปวดเข่า หมอให้พักก่อน"
+        )
+        await session.commit()
+
+        open_now = await jobs.open_jobs(session, sysscope, patient.patient_id)
+        assert [j.state for j in open_now] == ["cancelled"]
+        assert open_now[0].closed_at is not None
+        assert open_now[0].next_attempt_at is None
+
+        # ใบปิดท้ายบอกเหตุผลไว้ — ไม่ใช่หายไปเงียบ ๆ
+        from care_addons.ap_audit import services as audit
+
+        trail = await audit.trail(session, sysscope, created[0].correlation_id)
+        settled = [e for e in trail if e.event_type == "JOB_SETTLED"]
+        assert [e.attributes["settled_as"] for e in settled] == ["cancelled"]
+        assert "ปวดเข่า" in settled[0].attributes["reason"]
+        assert "JOB_COMPLETED" not in [e.event_type for e in trail]

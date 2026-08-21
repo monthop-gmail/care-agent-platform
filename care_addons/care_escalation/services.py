@@ -19,10 +19,12 @@ from zoneinfo import ZoneInfo
 
 from core.clock import now
 from core.tenancy import TenantScope, assert_same_tenant, new_id, scoped
+from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
+from care_addons.ap_audit.models import ApAuditEvent
 from care_addons.ap_policy.engine import PolicyDenied, evaluate
 from care_addons.care_escalation import policy as escalation_policy
 from care_addons.care_escalation.models import CareJob, CareNotification
@@ -204,18 +206,68 @@ async def _transition(
     )
 
 
-async def _complete(session: AsyncSession, scope: TenantScope, job: CareJob, reason: str) -> None:
+# การจบที่นับว่า **ส่งมอบสำเร็จ** — มีอย่างเดียวคือผู้ป่วยยืนยันว่าทำแล้ว
+# ผู้ดูแลรับเรื่องแทน = วงจรจบ แต่สิ่งที่ต้องทำยังไม่ได้ทำ จึงไม่ใช่การส่งมอบ
+DELIVERED = ("confirmed",)
+
+
+async def _settle(
+    session: AsyncSession,
+    scope: TenantScope,
+    job: CareJob,
+    reason: str,
+    *,
+    settled_as: str,
+) -> None:
+    """ปิด trail ของงานนี้ — ออกใบปิดท้ายที่ **ทุก terminal** ไม่ใช่เฉพาะที่จบสวย
+
+    🔒 devfactory-core RFC-0012 (semantics 1.2): trail ที่จบโดยไม่มีใบปิดท้าย
+       แยกไม่ออกจาก trail ที่ถูกตัดท้าย — ซึ่งเป็น failure mode ที่แย่ที่สุดของ audit
+       เพราะมันไม่ได้พังให้เห็น มันตอบผิดอย่างมั่นใจ
+
+    🔒 `JOB_COMPLETED` ออกเฉพาะตอนส่งมอบสำเร็จจริงเท่านั้น — ก่อนหน้านี้เราออกให้ทุกการปิด
+       รวมถึงยาที่ผู้ป่วยไม่ได้กิน ทำให้ผู้อ่านนอกระบบนับความล้มเหลวเป็นความสำเร็จ
+    """
     job.closed_at = now()
     await session.flush()
+    job_scope = _job_scope(scope, job)
+
+    if settled_as in DELIVERED:
+        await audit.emit(
+            session,
+            job_scope,
+            event_type="JOB_COMPLETED",
+            subject_type="job",
+            subject_id=job.care_job_id,
+            job_id=job.care_job_id,
+            severity=job.severity,
+            attributes={"patient_id": job.patient_id, "reason": reason, "attempts": job.attempts},
+        )
+
+    # นับตาม job_id — ขอบเขตเดียวกับที่ผู้อ่าน trail จัดกลุ่ม · +1 คือใบปิดท้ายใบนี้เอง
+    counted = await session.scalar(
+        select(sa_func.count())
+        .select_from(ApAuditEvent)
+        .where(
+            ApAuditEvent.tenant_id == scope.tenant_id,
+            ApAuditEvent.job_id == job.care_job_id,
+        )
+    )
     await audit.emit(
         session,
-        _job_scope(scope, job),
-        event_type="JOB_COMPLETED",
+        job_scope,
+        event_type="JOB_SETTLED",
         subject_type="job",
         subject_id=job.care_job_id,
         job_id=job.care_job_id,
         severity=job.severity,
-        attributes={"patient_id": job.patient_id, "reason": reason, "attempts": job.attempts},
+        attributes={
+            "patient_id": job.patient_id,
+            "settled_as": settled_as,
+            "reason": reason,
+            "attempts": job.attempts,
+            "event_count": int(counted or 0) + 1,
+        },
     )
 
 
@@ -488,7 +540,10 @@ async def _mark_missed(session: AsyncSession, scope: TenantScope, job: CareJob, 
     if pol.notifies_caregiver(job.severity):
         await escalate(session, scope, job)
     else:
-        await _complete(session, scope, job, "missed · severity ต่ำ เก็บไว้ใน daily summary")
+        await _settle(
+            session, scope, job,
+            "missed · severity ต่ำ เก็บไว้ใน daily summary", settled_as="missed",
+        )
 
 
 async def escalate(session: AsyncSession, scope: TenantScope, job: CareJob) -> list[CareNotification]:
@@ -533,7 +588,7 @@ async def escalate(session: AsyncSession, scope: TenantScope, job: CareJob) -> l
             policy_result=decision.as_policy_result(),
             attributes={"targets": []},
         )
-        await _complete(session, scope, job, "escalated · ไม่มีผู้รับ")
+        await _settle(session, scope, job, "escalated · ไม่มีผู้รับ", settled_as="escalated")
         return []
 
     targets = team if pol.notifies_all_targets(job.severity) else team[:1]
@@ -650,7 +705,7 @@ async def acknowledge(
         care_event_type=CONFIRMED_EVENT.get(job.source_kind, "care.reminder.acknowledged"),
         evidence=evidence,
     )
-    await _complete(session, scope, job, "confirmed")
+    await _settle(session, scope, job, "confirmed", settled_as="confirmed")
     return job
 
 
@@ -666,7 +721,8 @@ async def caregiver_acknowledge(session: AsyncSession, scope: TenantScope, care_
         "ผู้ดูแลรับเรื่องแล้ว",
         evidence={"kind": "caregiver_confirmed", "recorded_by": scope.principal.as_dict()},
     )
-    await _complete(session, scope, job, "caregiver acknowledged")
+    # ผู้ดูแลรับเรื่องแทน = วงจรจบ แต่สิ่งที่ผู้ป่วยต้องทำยังไม่ได้ทำ — ไม่ใช่การส่งมอบ
+    await _settle(session, scope, job, "caregiver acknowledged", settled_as="acknowledged")
     return job
 
 
@@ -690,6 +746,40 @@ async def jobs_for_source(
         stmt = stmt.where(CareJob.due_at == due_at)
     result = await session.execute(scoped(stmt.order_by(CareJob.due_at), CareJob, scope))
     return list(result.scalars())
+
+
+async def cancel_jobs(
+    session: AsyncSession,
+    scope: TenantScope,
+    *,
+    source_kind: str,
+    source_id: str,
+    reason: str,
+) -> list[CareJob]:
+    """ยกเลิกงานที่ยังเปิดอยู่ของแหล่งนี้ — ใช้เมื่อคำสั่งต้นทางถูกหยุด
+
+    🔒 เดิม `cancelled` เป็นสถานะที่ประกาศไว้ใน JOB_STATES แต่ไม่มีโค้ดไหนตั้งค่ามันเลย
+       ผลคือ **คำสั่งของหมอที่ถูกสั่งให้หยุด ยังเตือนผู้ป่วยต่อไปจนหมดวัน** เพราะงานของ
+       วันนั้นถูกสร้างไว้ก่อนแล้ว · การหยุดคำสั่งต้องหยุดสิ่งที่ค้างอยู่ด้วย ไม่ใช่แค่หยุดสร้างใหม่
+    """
+    result = await session.execute(
+        scoped(
+            select(CareJob).where(
+                CareJob.source_kind == source_kind,
+                CareJob.source_id == source_id,
+                CareJob.closed_at.is_(None),
+            ),
+            CareJob,
+            scope,
+        )
+    )
+    cancelled = []
+    for job in result.scalars():
+        job.next_attempt_at = None
+        await _transition(session, scope, job, "cancelled", reason)
+        await _settle(session, scope, job, reason, settled_as="cancelled")
+        cancelled.append(job)
+    return cancelled
 
 
 async def open_jobs(

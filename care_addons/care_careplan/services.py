@@ -33,6 +33,7 @@ from care_addons.care_careplan.models import (
     TASK_TYPES,
     CareCarePlanTask,
 )
+from care_addons.care_escalation import services as escalation
 from care_addons.care_escalation.models import CareJob
 from care_addons.care_escalation.services import create_job
 from care_addons.care_patient.services import get_patient
@@ -288,6 +289,16 @@ async def set_status(
     task.status = status
     await session.flush()
 
+    # 🔒 หยุดคำสั่งต้องหยุดสิ่งที่ค้างอยู่ด้วย — งานของวันนี้ถูกสร้างไว้ก่อนแล้ว
+    #    ถ้าไม่ยกเลิก ผู้ป่วยจะยังถูกเตือนให้ทำสิ่งที่หมอสั่งให้หยุดไปจนหมดวัน
+    cancelled = await escalation.cancel_jobs(
+        session,
+        scope,
+        source_kind=SOURCE_KIND,
+        source_id=task.task_id,
+        reason=f"คำสั่งถูกเปลี่ยนเป็น '{status}': {reason.strip()}",
+    )
+
     await audit.emit(
         session,
         scope,
@@ -302,6 +313,7 @@ async def set_status(
             "record_type": "careplan_task",
             "patient_id": task.patient_id,
             "task_type": task.task_type,
+            "cancelled_jobs": len(cancelled),
         },
     )
     return task

@@ -82,7 +82,9 @@ async def test_s1_confirm_closes_loop_without_escalation(session, tenant):
         kinds = [e.event_type for e in trail]
         assert kinds[0] == "JOB_CREATED"
         assert "EXECUTION_STARTED" in kinds
-        assert kinds[-1] == "JOB_COMPLETED"
+        # ส่งมอบสำเร็จ = มีทั้งใบผลลัพธ์และใบปิดท้าย · ใบปิดท้ายมาหลังสุดเสมอ
+        assert "JOB_COMPLETED" in kinds
+        assert kinds[-1] == "JOB_SETTLED"
         assert "care.medication.confirmed" in [e.care_event_type for e in trail]
 
 
@@ -208,3 +210,61 @@ async def test_trail_order_survives_events_that_share_a_timestamp(session, tenan
         trail_events = await audit.trail(session, scope, "corr-same-instant")
         assert len({e.occurred_at for e in trail_events}) == 1   # เวลาเดียวกันหมดจริง
         assert [e.event_id for e in trail_events] == written
+
+
+async def test_a_missed_reminder_is_never_recorded_as_completed(session, tenant):
+    """🔒 ยาที่ผู้ป่วยไม่ได้กิน ต้องไม่ออก event ชื่อ JOB_COMPLETED
+
+    ก่อนหน้านี้เราออกให้ทุกการปิดงาน — ใครก็ตามที่อ่าน event stream ของเราแล้วนับ
+    JOB_COMPLETED ว่า "เตือนสำเร็จ" จะนับยาที่พลาดเป็นความสำเร็จ
+    (devfactory-core RFC-0012 · semantics 1.2)
+    """
+    with FakeClock("2026-08-22T00:30:00+00:00") as clock:
+        patient, _ = await setup_patient(session, tenant)
+        # severity ต่ำ = ไม่ปลุกผู้ดูแล · งานจึงจบที่ "missed" แทนที่จะค้างรอคนรับเรื่อง
+        await routines.add_routine(
+            session, scope_for(tenant), patient_id=patient.patient_id,
+            kind="activity", label="ดื่มน้ำ", scheduled_time="08:00", severity="low",
+        )
+        await session.commit()
+        sysscope = system_scope(tenant)
+        await routines.materialize_day(session, sysscope, patient.patient_id)
+        await session.commit()
+
+        clock.set("2026-08-22T01:00:00+00:00")
+        for _ in range(5):
+            await jobs.run_due_jobs(session, sysscope)
+            await session.commit()
+            clock.advance(minutes=25)
+
+        job = (await jobs.open_jobs(session, sysscope, patient.patient_id, states=["missed"]))[0]
+        trail = await audit.trail(session, sysscope, job.correlation_id)
+        kinds = [e.event_type for e in trail]
+
+        assert "JOB_COMPLETED" not in kinds, "งานที่พลาดต้องไม่ถูกบันทึกว่าส่งมอบสำเร็จ"
+        settled = [e for e in trail if e.event_type == "JOB_SETTLED"]
+        assert len(settled) == 1
+        assert settled[0].attributes["settled_as"] == "missed"
+        # ใบปิดท้ายบอกด้วยว่า trail นี้ควรมีกี่ใบ — ใบที่หายจึงเห็นได้
+        assert settled[0].attributes["event_count"] == len(trail)
+
+
+async def test_every_terminal_gets_a_closing_record(session, tenant):
+    """trail ที่จบโดยไม่มีใบปิดท้าย แยกไม่ออกจาก trail ที่ถูกตัดท้าย"""
+    with FakeClock("2026-08-22T00:30:00+00:00") as clock:
+        patient, _ = await _seed_morning_medication(session, tenant)
+        sysscope = system_scope(tenant)
+        created = await routines.materialize_day(session, sysscope, patient.patient_id)
+        await session.commit()
+
+        clock.set("2026-08-22T01:00:00+00:00")
+        await jobs.run_due_jobs(session, sysscope)
+        await jobs.acknowledge(
+            session, scope_for(tenant, patient.patient_id), created[0].care_job_id
+        )
+        await session.commit()
+
+        trail = await audit.trail(session, sysscope, created[0].correlation_id)
+        settled = [e for e in trail if e.event_type == "JOB_SETTLED"]
+        assert [e.attributes["settled_as"] for e in settled] == ["confirmed"]
+        assert settled[0].attributes["event_count"] == len(trail)
