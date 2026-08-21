@@ -256,7 +256,7 @@ async def audit_events(session, tenant_id: str, patient_id: str | None = None):
 
     stmt = select(ApAuditEvent).where(ApAuditEvent.tenant_id == tenant_id)
     result = await session.execute(
-        stmt.order_by(ApAuditEvent.occurred_at, ApAuditEvent.sequence_no)
+        stmt.order_by(ApAuditEvent.occurred_at, ApAuditEvent.sequence)
     )
     events = list(result.scalars())
     if patient_id:

@@ -184,7 +184,7 @@ async def test_trail_order_survives_events_that_share_a_timestamp(session, tenan
     """audit ที่เรียงไม่ได้ = ตอบไม่ได้ว่าอะไรเกิดก่อนอะไร ซึ่งทำลายเหตุผลทั้งหมดของการมี audit
 
     หลาย event ใน transaction เดียวมี occurred_at เท่ากันเป๊ะได้จริง และ Postgres
-    ไม่รับประกันลำดับของแถวที่ ORDER BY เท่ากัน — `sequence_no` เป็นตัวตัดสิน
+    ไม่รับประกันลำดับของแถวที่ ORDER BY เท่ากัน — `sequence` ของ `event/v1` เป็นตัวตัดสิน
     """
     from care_addons.ap_audit import services as audit_svc
 
