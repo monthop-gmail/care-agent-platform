@@ -122,7 +122,8 @@ def test_full_care_loop_over_http(client, care):
         f"/api/platform/audit/trail/{jobs[0]['correlation_id']}", headers=headers
     ).json()
     assert trail[0]["event_type"] == "JOB_CREATED"
-    assert trail[-1]["event_type"] == "JOB_COMPLETED"
+    assert trail[-1]["event_type"] == "JOB_SETTLED"      # ใบปิดท้ายของ trail
+    assert "JOB_COMPLETED" in [e["event_type"] for e in trail]
     assert any(e["care_event_type"] == "care.meal.confirmed" for e in trail)
 
 

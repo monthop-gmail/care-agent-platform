@@ -5,8 +5,8 @@
 
 repo: monthop-gmail/agent-platform
 ref: main
-commit: cb031bcae10fdb517ebce83389a1a5b8b61b13e3
-pinned_at: "2026-08-21"
+commit: 6e97e0854f59426f62dfb873b91b6524da62e4b2
+pinned_at: "2026-08-22"
 
 # $ref ที่ contract ของเราอ้างไปที่ agent-platform ได้ — ทุกตัวต้องมีจริงที่ commit ข้างบน
 # เพิ่มรายการใหม่ = ต้องรัน drift_check แบบ --online ให้ผ่านก่อน commit
@@ -53,6 +53,9 @@ frozen_guarantees:
   - consumer ที่เจอ event_type ที่ไม่รู้จักต้องเก็บไว้แล้วข้ามการตีความ ห้าม drop ห้าม fail
   - ค่า authority ที่ไม่รู้จักต้อง fallback เป็น human_command_required
   - ค่า action_risk ที่ไม่รู้จักต้อง fallback เป็น critical
+  # semantics 1.2 (devfactory-core RFC-0012) — บังคับที่ tests/test_scenario_care_loop.py
+  - ทุกการจบแบบ terminal ต้องออกใบปิดท้าย ไม่ใช่เฉพาะการจบที่สำเร็จ
+  - ใบปิดท้ายเป็นคำแถลงเรื่อง "บันทึกจบแล้ว" ไม่ใช่ "งานสำเร็จ" — สองอย่างนี้ใช้ event เดียวกันไม่ได้
   # approval/v1 (RFC-0002 ของ devfactory-core) — บังคับที่ tests/test_scenario_approval.py
   - decision เป็น immutable · เปลี่ยนใจคือใบใหม่ที่อ้างใบเดิม ไม่ใช่การแก้ใบเดิม
   - ทุก APPROVE ต้องมี event GOVERNANCE_DECISION คู่กันเสมอ
