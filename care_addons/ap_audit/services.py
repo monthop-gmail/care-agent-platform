@@ -143,7 +143,7 @@ async def emit(
 
     event = ApAuditEvent(
         event_id=new_id("evt"),
-        sequence_no=next(_sequence),
+        sequence=next(_sequence),
         event_type=event_type,
         care_event_type=care_event_type,
         tenant_id=validate_id(scope.tenant_id, "tenant_id"),
@@ -198,6 +198,8 @@ def as_platform_event(event: ApAuditEvent, *, lift: tuple[str, ...] = ()) -> dic
             payload[field] = value
     if event.actor is not None:
         payload["actor"] = event.actor
+    if event.sequence is not None:
+        payload["sequence"] = event.sequence
     if event.consent is not None:
         payload["consent"] = event.consent
     if event.transition is not None:
@@ -242,7 +244,7 @@ async def query(
     if job_id:
         stmt = stmt.where(ApAuditEvent.job_id == job_id)
     stmt = stmt.order_by(
-        ApAuditEvent.occurred_at.desc(), ApAuditEvent.sequence_no.desc()
+        ApAuditEvent.occurred_at.desc(), ApAuditEvent.sequence.desc()
     ).limit(limit)
     result = await session.execute(stmt)
     return list(result.scalars())
@@ -257,6 +259,6 @@ async def trail(session: AsyncSession, scope: TenantScope, correlation_id: str) 
             ApAuditEvent.correlation_id == correlation_id,
         )
         # เรียงด้วยลำดับการเขียนเป็นตัวตัดสินเมื่อเวลาเท่ากัน — ไม่งั้น "อะไรเกิดก่อน" ตอบไม่ได้
-        .order_by(ApAuditEvent.occurred_at, ApAuditEvent.sequence_no)
+        .order_by(ApAuditEvent.occurred_at, ApAuditEvent.sequence)
     )
     return list(result.scalars())

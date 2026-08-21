@@ -29,15 +29,19 @@ class ApAuditEvent(Base):
     )
 
     event_id: Mapped[str] = mapped_column(String(63), primary_key=True)
-    # ลำดับการเขียนจริง — ใช้เรียง event ที่ `occurred_at` เท่ากันเป๊ะ
+    # ลำดับการเขียนจริง — ใช้เรียง event ที่ `occurred_at` เท่ากันเป๊ะ (event/v1 v1.3.0)
     #
     # 🔒 trail ที่เรียงไม่ได้ = ตอบไม่ได้ว่าอะไรเกิดก่อนอะไร ซึ่งทำลายเหตุผลทั้งหมดของการมี audit
     #    เวลาความละเอียดระดับไมโครวินาทีชนกันได้จริง (หลาย event ใน transaction เดียว)
     #    และ Postgres ไม่รับประกันลำดับของแถวที่ ORDER BY เท่ากัน
     #
+    # ⚠️ **ไม่รับประกันความต่อเนื่อง** — ช่องว่างไม่ได้แปลว่ามีใบหาย (contract ย้ำข้อนี้ไว้เอง)
+    #    transaction ที่ rollback สร้างช่องว่างได้โดยไม่มีใครทำผิด · เลขนี้ตอบได้แค่ว่า
+    #    *ใบไหนมาก่อนใบไหน* ไม่ได้ตอบว่า *ครบหรือยัง*
+    #
     # ⚠️ รับประกันเฉพาะลำดับของ event ที่เขียนจาก **process เดียวกัน** — ไม่ใช่นาฬิกากลาง
     #    ค่าเริ่มต้นมาจากเวลาระบบตอน import จึงเพิ่มขึ้นเรื่อย ๆ ข้าม restart ด้วย
-    sequence_no: Mapped[int] = mapped_column(BigInteger)
+    sequence: Mapped[int] = mapped_column(BigInteger)
     event_type: Mapped[str] = mapped_column(String(64), index=True)
     care_event_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 

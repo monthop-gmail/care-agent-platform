@@ -408,7 +408,7 @@ async def run_scenario() -> tuple[list, list, list]:
             rows = (
                 await session.execute(
                     select(ApAuditEvent).order_by(
-                        ApAuditEvent.occurred_at, ApAuditEvent.sequence_no
+                        ApAuditEvent.occurred_at, ApAuditEvent.sequence
                     )
                 )
             ).scalars()
