@@ -31,6 +31,7 @@ for candidate in (ROOT / "pstack_src", ROOT.parent / "pstack"):
         break
 
 CHECK_DB = ROOT / "payload_check.db"
+DEFAULT_PROFILE_SOURCE = ROOT / "profiles" / "care-agent" / "profile.yaml"
 CACHE = ROOT / ".schema_cache"
 PINNED = ROOT / "conformance" / "pinned.yaml"
 RAW = "https://raw.githubusercontent.com/{repo}/{commit}/contracts/{path}"
@@ -55,6 +56,11 @@ SCHEMA_FILES = [
     "model/v1/inference.schema.yaml",
     "consent/v1/consent.schema.yaml",
     "approval/v1/approval.schema.yaml",
+    # เพดานของ agent — profile_check เอา schema ตัวนี้ไป validate ไฟล์ของเรา
+    "profile/v1/profile.schema.yaml",
+    # profile/v1 $ref ไปหาสองตัวนี้ — registry ต้องมีครบไม่งั้น resolve ไม่ได้
+    "capability/v1/requirement.schema.yaml",
+    "tool/v1/tool.schema.yaml",
 ]
 
 # attribute ของโดเมนที่ care-event.schema.yaml บังคับให้อยู่ระดับบนสุด

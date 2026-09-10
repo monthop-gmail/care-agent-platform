@@ -17,6 +17,9 @@ contracts:
   - consent/v1      # ความยินยอมเข้าถึงข้อมูลของบุคคล (ap_consent) — เสนอโดย repo นี้เอง (ADR-0012)
                     # v1.1.0 `conditions` + v1.2.0 `Evaluation` มาจากเคสจริงของ repo นี้ (ADR-0014/0016)
   - approval/v1     # คำตัดสินของผู้มีอำนาจหลังจาก policy บอกว่าต้องขออนุมัติ (ap_approval)
+  - profile/v1      # เพดานของ agent — `profiles/care-agent/profile.yaml` conform ตัวนี้
+                    # และ `conformance/profile_check.py` validate กับ schema ที่ pin ทุก PR
+                    # (ประกาศเพิ่มหลัง agent-platform ทักว่าเราอ้างมันโดยไม่ได้ pin)
                     # decision immutable · ไม่มี auto-approve · ผู้ยื่นตัดสินให้ตัวเองไม่ได้
 
 # contract ที่ยังไม่ได้ใช้ — จะเพิ่มเมื่อ implement จริง ไม่ประกาศล่วงหน้า
@@ -58,11 +61,12 @@ conformance:
     - name: profile_check
       command: python conformance/profile_check.py
       scope: >-
-        เพดานของ agent (`profiles/care-agent/profile.yaml` · agent-platform `profile/v1`)
-        ถูกบังคับจริง ไม่ใช่ไฟล์ที่วางอยู่เฉย ๆ — ทุกชื่อใน `tools.allow` เป็น capability
+        เพดานของ agent สองชั้น: **รูป** — `profiles/care-agent/profile.yaml` validate กับ
+        schema ของ `profile/v1` ที่ commit ที่ pin ไว้ · **พฤติกรรม** — เพดานถูกบังคับจริง
+        เมื่อถาม `evaluate()` ไม่ใช่ไฟล์ที่วางอยู่เฉย ๆ — ทุกชื่อใน `tools.allow` เป็น capability
         ที่ประกาศไว้จริง · `tools.deny` ปฏิเสธ agent ได้จริงเมื่อถาม `evaluate()`
         · allow เป็นชุดปิด · action ที่ต้องมีคนสั่งไม่หลุดให้ agent · เพดานไม่กินคน
-        · 🔒 อ่านอย่างเดียว รันกับ deployment จริงได้
+        · undoes ไม่ผิดทิศ (ADR-0029) · 🔒 อ่านอย่างเดียว รันกับ deployment จริงได้
     - name: rls_check
       command: CONFORMANCE_ALLOW_DESTRUCTIVE=1 python conformance/rls_check.py
       scope: >-

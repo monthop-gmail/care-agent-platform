@@ -19,8 +19,17 @@
 รัน:
     python conformance/profile_check.py
 
+ตรวจสองชั้นที่ต่างกัน และทั้งสองจำเป็น:
+   **รูป** — `profile.yaml` conform `profile/v1` ของ agent-platform ที่ commit ที่ pin ไว้
+   **พฤติกรรม** — เพดานถูกบังคับจริงเมื่อถาม `evaluate()` ไม่ใช่แค่ไฟล์ที่รูปถูก
+
+ชั้นแรกเพิ่มเข้ามาหลัง agent-platform ทักว่าเราอ้าง `profile/v1` ในคำอธิบาย check
+แต่ไม่ได้ประกาศมันไว้ใน `contracts:` และไม่ได้ validate อะไรกับ schema จริงเลย
+(ai-collab dis-65134078 seq 21) — เขาถูก และช่องนั้นปิดแล้วด้วยไฟล์นี้
+
 🔒 **อ่านอย่างเดียว ไม่แตะฐานข้อมูล** — รันกับ deployment จริงได้ปลอดภัย
    ต่างจาก migration/payload/rls check ที่เริ่มด้วย DROP SCHEMA (ดู conformance/_guard.py)
+   · ใช้ schema จาก `.schema_cache` ที่ `payload_check` ดึงไว้ · `--offline` เพื่อไม่ต่อเน็ต
 """
 
 from __future__ import annotations
@@ -48,19 +57,46 @@ DOMAIN_MODULES = [
 ]
 
 
+def profile_schema(offline: bool) -> dict:
+    """schema ของ `profile/v1` ที่ commit ที่ pin ไว้ — ใช้กลไกเดียวกับ payload_check"""
+    from conformance.payload_check import fetch_schemas, load_pinned
+
+    pinned = load_pinned()
+    schemas = fetch_schemas(pinned, offline=offline)
+    document = schemas["https://schemas.agent-platform.internal/profile/v1/profile.schema.yaml"]
+    return schemas, document
+
+
 def main() -> int:
     import importlib
+
+    offline = "--offline" in sys.argv
 
     for module in DOMAIN_MODULES:
         importlib.import_module(f"care_addons.{module}.services")
 
-    from care_addons.ap_policy.engine import AUTHORITY_ORDER, evaluate, load_policy
+    from care_addons.ap_policy.engine import (
+        AUTHORITY_ORDER,
+        evaluate,
+        load_policy,
+        undo_violations,
+    )
     from care_addons.ap_policy.profile import load_profile
     from care_addons.ap_policy.services import DECLARED
 
     policy = load_policy()
     profile = load_profile()
     failures: list[str] = []
+
+    # (0) รูปของไฟล์ต้อง conform profile/v1 — เพดานที่รูปผิดคือเพดานที่ตีความไม่ตรงกัน
+    import yaml
+
+    from conformance.payload_check import DEFAULT_PROFILE_SOURCE, build_validator
+
+    schemas, schema = profile_schema(offline)
+    document = yaml.safe_load(DEFAULT_PROFILE_SOURCE.read_text(encoding="utf-8"))
+    for error in build_validator(schemas, schema).iter_errors(document):
+        failures.append(f"profile/v1 · {error.json_path} — {error.message}")
 
     # (1) ทุกชื่อใน allow ต้องเป็น capability ที่ประกาศไว้จริงใน policy config
     #     ข้อนี้คือข้อที่เราพลาดมาก่อน — ชื่อที่ไม่มีอยู่จริงทำให้เพดานเป็น no-op
@@ -117,6 +153,11 @@ def main() -> int:
                 f"'{capability}' ถูกปฏิเสธสำหรับ 'human' ด้วย — เพดานของ agent ไม่ควรกินคน"
             )
 
+    # (7) undoes — การยกเลิกต้องไม่แพงกว่าการกระทำที่มันยกเลิก (agent-platform ADR-0029)
+    #     `load_policy()` raise ตั้งแต่ boot อยู่แล้ว · ตรงนี้รายงานให้ผู้ตรวจภายนอกเห็นด้วย
+    failures += undo_violations(policy)
+    declared_undo = [c for c, e in policy.capabilities.items() if (e or {}).get("undoes")]
+
     for failure in failures[:30]:
         print(f"   {failure}")
     if failures:
@@ -124,10 +165,10 @@ def main() -> int:
         return 1
 
     print(
-        f"✓ เพดานของ agent บังคับจริง — profile '{profile.profile_id}' "
+        f"✓ เพดานของ agent conform profile/v1 และบังคับจริง — profile '{profile.profile_id}' "
         f"อนุญาต {len(profile.allow)} ห้าม {len(profile.deny)} · "
         f"ตรวจกับ {len(policy.capabilities)} capability ที่ประกาศไว้ "
-        f"({len(DECLARED)} ตัวมี @care_action)"
+        f"({len(DECLARED)} ตัวมี @care_action · {len(declared_undo)} คู่ประกาศ undoes)"
     )
     return 0
 

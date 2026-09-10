@@ -60,7 +60,17 @@ capabilities:
   organization.membership.write: { action_risk: high }
   # 🔒 การ **ตัด** สิทธิ์ต้องทำได้เสมอและทันที — ถ้าต้องรออนุมัติก่อนถึงจะตัดสิทธิ์หมอที่ลาออกได้
   #    ระบบจะปลอดภัยน้อยลงเพราะกระบวนการอนุมัติ ซึ่งกลับหัวกลับหางกับเจตนาของ policy
-  organization.membership.end:  { action_risk: low }
+  # 🔒 `undoes` ตาม agent-platform ADR-0029 — ประกาศ **ความสัมพันธ์** ไม่ใช่คุณสมบัติ
+  #    กฎที่บังคับได้: capability ที่ยกเลิกผลของอีกตัว ต้องไม่ต้องการ authority สูงกว่าตัวนั้น
+  #    ถ้าวันหนึ่งมีคนตั้งการตัดสิทธิ์ให้แพงกว่าการให้สิทธิ์ boot จะไม่ผ่าน แทนที่จะไปรู้ตอน
+  #    ที่หมอลาออกแล้วตัดสิทธิ์ไม่ได้เพราะติดคิวอนุมัติ (เราเคยตั้งผิดแบบนั้นมาแล้วจริง)
+  #
+  #    ⚠️ `medication.regimen.stop` **ไม่ประกาศ** undoes ทั้งที่ดูเหมือนย้อน `.write`
+  #       เพราะการหยุดยาเป็นการรักษาที่มีความเสี่ยงของตัวเอง ไม่ใช่การคืนโลกกลับสภาพเดิม
+  #       — เส้นแบ่งของ undoes คือ "ยกเลิกแล้วไม่มีความเสี่ยงใหม่" ไม่ใช่ "ทำสิ่งตรงข้าม"
+  organization.membership.end:
+    action_risk: low
+    undoes: organization.membership.write
   organization.access.grant:    { action_risk: high }
 
   medication.reminder.send:     { action_risk: low }

@@ -91,9 +91,33 @@ def _rank(value: str, order: list[str]) -> int:
     return order.index(value) if value in order else len(order)
 
 
+def undo_violations(policy: Policy) -> list[str]:
+    """คู่ที่ประกาศ undoes แล้วผิดทิศ — คืนรายการข้อความ ไม่ raise
+
+    แยกเป็นฟังก์ชันเพื่อให้ conformance check เรียกได้ตรง ๆ และรายงานได้ทุกข้อในรอบเดียว
+    """
+    problems = []
+    for capability, entry in policy.capabilities.items():
+        target = (entry or {}).get("undoes")
+        if not target or target not in policy.capabilities:
+            continue
+        undo = policy.evaluate(capability).authority
+        original = policy.evaluate(target).authority
+        if _rank(undo, AUTHORITY_ORDER) > _rank(original, AUTHORITY_ORDER):
+            problems.append(
+                f"'{capability}' ยกเลิก '{target}' แต่ต้องการ authority สูงกว่า "
+                f"({undo} > {original}) — การหยุดต้องไม่ยากกว่าการเริ่ม"
+            )
+    return problems
+
+
 @lru_cache(maxsize=8)
 def load_policy(path: str | None = None) -> Policy:
-    return Policy(_load_yaml(Path(path) if path else DEFAULT_POLICY_PATH))
+    policy = Policy(_load_yaml(Path(path) if path else DEFAULT_POLICY_PATH))
+    problems = undo_violations(policy)
+    if problems:
+        raise PolicyConfigError(" · ".join(problems))
+    return policy
 
 
 class Policy:
@@ -124,6 +148,22 @@ class Policy:
                 raise PolicyConfigError(
                     f"authority_map[{risk}]={configured} หลวมกว่าเพดานของ profile ({ceiling}) "
                     f"— profile เป็นเพดาน ไม่ใช่การอนุญาต ค่าที่กว้างที่สุดชนะไม่ได้ (profile/v1)"
+                )
+
+        # 🔒 undoes (agent-platform ADR-0029) — การยกเลิกต้องไม่แพงกว่าการกระทำที่มันยกเลิก
+        #    ไม่งั้นกระบวนการอนุมัติจะกลายเป็นสิ่งที่ขวางไม่ให้หยุดความเสียหาย
+        #
+        #    ⚠️ ใช้ได้เฉพาะเมื่อการยกเลิก **คืนโลกกลับสภาพเดิมโดยไม่มีความเสี่ยงของตัวเอง**
+        #       `medication.regimen.stop` จึงไม่ประกาศ undoes ทั้งที่ดูเหมือนย้อน
+        #       `medication.regimen.write` — การหยุดยาเป็นการรักษาที่มีความเสี่ยงของมันเอง
+        for capability, entry in self.capabilities.items():
+            target = (entry or {}).get("undoes")
+            if not target:
+                continue
+            if target not in self.capabilities:
+                raise PolicyConfigError(
+                    f"'{capability}' ประกาศ undoes: '{target}' ซึ่งไม่มีอยู่จริงใน capabilities "
+                    f"— ชื่อที่ชี้ไปที่ว่างเปล่าทำให้กฎนี้ไม่มีผลโดยไม่มีใครรู้"
                 )
 
         for risk, required in self.floor_risk.items():

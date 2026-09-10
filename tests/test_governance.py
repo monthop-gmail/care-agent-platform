@@ -304,3 +304,57 @@ def test_emergency_escalation_stays_fast_under_the_ceiling():
     assert decision.authority == "notify"
     assert decision.audited_exception is True
     assert decision.may_act_now is True
+
+
+def test_undo_must_never_be_harder_than_the_action_it_undoes(tmp_path):
+    """🔒 agent-platform ADR-0029 — การหยุดต้องไม่ยากกว่าการเริ่ม
+
+    เราเคยตั้งการตัดสิทธิ์ไว้ระดับเดียวกับการให้สิทธิ์ ผลคือกระบวนการอนุมัติกลายเป็น
+    สิ่งที่ขวางไม่ให้หยุดความเสียหาย · ตอนนี้ config แบบนั้นทำให้ boot ไม่ผ่าน
+    """
+    from care_addons.ap_policy.engine import PolicyConfigError, load_policy
+
+    backwards = tmp_path / "backwards-authority-map.yaml"
+    backwards.write_text(
+        "policy_id: test.backwards.v1\n"
+        "authority_map:\n"
+        "  low: auto\n"
+        "  medium: notify\n"
+        "  high: approval_required\n"
+        "  critical: human_command_required\n"
+        "capabilities:\n"
+        "  thing.grant: { action_risk: high }\n"
+        "  thing.revoke: { action_risk: critical, undoes: thing.grant }\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PolicyConfigError, match="การหยุดต้องไม่ยากกว่าการเริ่ม"):
+        load_policy(str(backwards))
+
+
+def test_undoes_pointing_nowhere_is_rejected(tmp_path):
+    """ชื่อที่ชี้ไปที่ว่างเปล่าทำให้กฎไม่มีผลโดยไม่มีใครรู้ — แบบเดียวกับ allowlist ที่สะกดผิด"""
+    from care_addons.ap_policy.engine import PolicyConfigError, load_policy
+
+    dangling = tmp_path / "dangling-authority-map.yaml"
+    dangling.write_text(
+        "policy_id: test.dangling.v1\n"
+        "authority_map: { low: auto, medium: notify, high: approval_required,"
+        " critical: human_command_required }\n"
+        "capabilities:\n"
+        "  thing.revoke: { action_risk: low, undoes: thing.that.never.existed }\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PolicyConfigError, match="ไม่มีอยู่จริง"):
+        load_policy(str(dangling))
+
+
+def test_stopping_a_medication_is_not_declared_as_an_undo():
+    """🔒 เส้นแบ่งของ undoes คือ "ยกเลิกแล้วไม่มีความเสี่ยงใหม่" ไม่ใช่ "ทำสิ่งตรงข้าม"
+
+    การหยุดยาเป็นการรักษาที่มีความเสี่ยงของตัวเอง ถ้าประกาศเป็น undo ของการสั่งยา
+    กฎจะบังคับให้การหยุดยาง่ายกว่าการสั่งยา ซึ่งผิดในโดเมนนี้
+    """
+    from care_addons.ap_policy.engine import load_policy
+
+    stop = load_policy().capabilities["medication.regimen.stop"]
+    assert "undoes" not in stop
