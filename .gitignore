@@ -8,6 +8,10 @@ venv/
 # Env / secrets
 .env
 .env.*
+# 🔒 ไฟล์นี้ถือ bearer token ของ ai-collab แบบตัวเป็น ๆ — repo นี้เป็น public
+#    กติกา ecosystem (dec-bcb9854f) ให้ commit .mcp.json ได้ **ก็ต่อเมื่อ** เขียนเป็น
+#    "Bearer ${MCP_AUTH_TOKEN}" ให้ interpolate จาก env เท่านั้น · ของเราเป็นค่าจริง จึงห้ามขึ้น
+.mcp.json
 !.env.example
 
 # Test / tooling
