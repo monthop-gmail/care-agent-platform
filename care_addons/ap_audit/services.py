@@ -124,6 +124,10 @@ async def emit(
                 f"error ต้องเป็น object ตาม error/v1 — ขาด {sorted(missing)} "
                 f"(ใช้ make_error() แทนการส่งข้อความดิบ)"
             )
+        # `error/v1` นิยาม `details` ว่า `{"type": "object"}` — เปิดทั้งหมดแบบเดียวกับ
+        # `metadata` เป๊ะ · ต่างกันแค่ไม่มีใครพูดถึงมัน · ปิดด้วยทะเบียนเดียวกัน (ADR-0011)
+        if found := attribute_problems(error.get("details") or {}):
+            raise EventRejected("error.details ไม่ผ่านชุดที่ประกาศไว้ — " + " · ".join(found))
 
     if transition is not None:
         # event/v1 กำหนด transition.from/to เป็น string — การสร้างของใหม่ที่ยังไม่มีสถานะเดิม

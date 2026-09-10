@@ -107,18 +107,30 @@ extensions:
 gaps:
   - id: no-rule-for-which-field-may-hold-human-text
     detail: >-
-      `event/v1` เปิด `metadata` ไว้ทั้งหมด (`{"type": "object"}`) ห้ามแค่ chain-of-thought
-      · repo นี้ปิดเป็นชุดปิดฝั่งตัวเองแล้ว (ADR-0011) และพบว่าปิดแค่ `metadata` ไม่พอ —
-      `transition.reason` กับ `error.message` เป็นฟิลด์ข้อความที่ contract นิยามเอง
+      `event/v1` `transition.reason` เป็น `type: string` เปล่า ๆ ไม่มีข้อจำกัดสักบรรทัด
       และเป็นที่เดียวที่เก็บ "เหตุผลที่คนหยุดคำสั่งของหมอ" ซึ่ง ADR-0006 บังคับว่าต้องตอบได้
       · กฎที่บอกแค่ "audit ห้ามถือ PII ของ subject" จะทำให้ระบบที่ทำถูกกลายเป็นระบบที่
       conform ไม่ได้ · สิ่งที่ต้องมีคือกฎว่าฟิลด์ไหนถือข้อความของมนุษย์ได้ และกติกาการเก็บ/ลบ
       ของฟิลด์นั้น
+      · `metadata` ปิดฝั่งเราแล้ว (ADR-0011) และ `error/v1` `message` มีกฎอยู่แล้วในสัญญา
+      จึงไม่ใช่ของที่รอ RFC — agent-platform ชี้ข้อนี้ที่ dis-65134078 seq 26 และเราตรวจแล้ว
+      (ดู resolved_gaps `raw-channel-error-in-error-message`)
     tracked_by: >-
       RFC ที่ agent-platform จะเปิดที่ devfactory-core (ตกลงไว้ที่ dis-65134078 seq 24
-      ว่ารอผลการปิด attributes ของ repo นี้ก่อน — ใบนี้คือผลนั้น)
+      ว่ารอผลการปิด attributes ของ repo นี้ก่อน) — เขาจะส่งร่างมาให้อ่านก่อนเปิด
 
 resolved_gaps:
+  - id: raw-channel-error-in-error-message
+    detail: >-
+      `error/v1` `message` ห้ามมี credential / PII / เนื้อหา prompt อยู่แล้วในสัญญา
+      แต่เราวางข้อความดิบจากช่องทางส่ง (รวม `str(e)` ของ exception ใด ๆ ที่ sender โยน)
+      ลงในฟิลด์นั้น · `register_sender` เปิดให้ addon ไหนก็เสียบได้ เราจึงคุมเนื้อในไม่ได้
+    tracked_by: dis-65134078 seq 26 (agent-platform ชี้ว่าข้อนี้ไม่ต้องรอ RFC)
+    resolved_by: >-
+      message เป็นข้อความคงที่ที่ไม่มีค่าจากภายนอก · ข้อความ error ดิบอยู่ที่
+      `care_notification.delivery_error` ตามเดิม และ `error.details` ชี้ด้วย notification_id
+      · ปิด `error.details` ด้วยทะเบียนเดียวกับ attributes ด้วย เพราะ `error/v1` นิยามมันว่า
+      `{"type": "object"}` คือ open bag รูปเดียวกับ `metadata` ที่ไม่มีใครพูดถึง
   - id: consent-conditions-that-must-still-hold
     detail: >-
       `consent/v1` ตรวจได้แค่ "ใบยังไม่หมดอายุ/ไม่ถูกเพิกถอน" แต่ใบที่ผูกกับข้อเท็จจริง

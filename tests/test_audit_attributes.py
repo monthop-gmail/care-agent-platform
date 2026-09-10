@@ -68,6 +68,31 @@ async def test_a_declared_key_still_cannot_carry_a_sentence(session, tenant):
     await session.rollback()
 
 
+async def test_error_details_is_closed_the_same_way(session, tenant):
+    """`error/v1` นิยาม `details` ว่า `{"type": "object"}` — เปิดทั้งหมดเหมือน `metadata`
+
+    ฟิลด์นี้ไม่มีใครพูดถึงตอนตกลงเรื่อง attributes · มันเป็นช่องที่สามที่รับอะไรก็ได้
+    """
+    await setup_patient(session, tenant)
+    with pytest.raises(audit.EventRejected) as err:
+        await audit.emit(
+            session,
+            scope_for(tenant),
+            event_type="EXECUTION_FAILED",
+            subject_type="execution",
+            subject_id="exec-1",
+            error=audit.make_error(
+                "care.test.failed",
+                "internal",
+                "ทดสอบ",
+                retryable=False,
+                details={"raw_response": "ผู้ป่วยชื่อ ... ปฏิเสธจากปลายทาง"},
+            ),
+        )
+    assert "raw_response" in str(err.value)
+    await session.rollback()
+
+
 def test_every_key_the_domain_writes_is_declared():
     """สแกนโค้ดจริง ไม่ใช่แค่เส้นทางที่เทสเดินผ่าน
 
@@ -84,7 +109,9 @@ def test_every_key_the_domain_writes_is_declared():
             if not isinstance(node, ast.Call):
                 continue
             for kw in node.keywords:
-                if kw.arg != "attributes" or not isinstance(kw.value, ast.Dict):
+                # `details` ของ error/v1 เป็น open bag รูปเดียวกับ metadata เป๊ะ
+                # ต่างกันแค่ไม่มีใครพูดถึงมัน — ใช้ทะเบียนเดียวกัน
+                if kw.arg not in ("attributes", "details") or not isinstance(kw.value, ast.Dict):
                     continue
                 for key in kw.value.keys:
                     if key is None:

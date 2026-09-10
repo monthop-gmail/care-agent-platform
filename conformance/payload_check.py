@@ -510,6 +510,11 @@ def main() -> int:
             failures.append(
                 f"attributes · {event.event_type} ({event.event_id}): {problem}"
             )
+        # `error/v1` `details` เป็น open bag รูปเดียวกับ `metadata` — ปิดด้วยทะเบียนเดียวกัน
+        for problem in attribute_problems((payload.get("error") or {}).get("details") or {}):
+            failures.append(
+                f"error.details · {event.event_type} ({event.event_id}): {problem}"
+            )
         if payload.get("care_event_type"):
             care_count += 1
             for error in care_validator.iter_errors(payload):
