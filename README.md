@@ -233,7 +233,7 @@ repo นี้ประกาศตัวเป็น consumer ผ่าน [`pl
 
 | สคริปต์ | รันกับ DB จริงได้ไหม |
 |---|---|
-| `drift_check` · `db_role_check` | ✅ อ่านอย่างเดียว |
+| `drift_check` · `db_role_check` · `profile_check` | ✅ อ่านอย่างเดียว |
 | `migration_check` · `payload_check` · `rls_check` | ❌ เริ่มด้วย `DROP SCHEMA public CASCADE` |
 
 สามตัวหลังปฏิเสธตัวเองถ้าไม่ได้ตั้ง `CONFORMANCE_ALLOW_DESTRUCTIVE=1` (CI ตั้งให้ · DB ของ CI ทิ้งได้)

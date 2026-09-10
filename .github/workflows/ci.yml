@@ -82,6 +82,11 @@ jobs:
         if: matrix.db == 'sqlite'
         run: python conformance/drift_check.py
 
+      # เพดานของ agent ต้องถูกบังคับจริง ไม่ใช่ไฟล์ที่วางอยู่เฉย ๆ (อ่านอย่างเดียว ไม่แตะ DB)
+      - name: เพดานของ agent profile
+        if: matrix.db == 'sqlite'
+        run: python conformance/profile_check.py
+
       - name: Migration ตรงกับ models
         run: python conformance/migration_check.py
 

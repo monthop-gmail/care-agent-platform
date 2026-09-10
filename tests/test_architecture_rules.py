@@ -292,3 +292,21 @@ def test_destructive_conformance_scripts_refuse_a_real_database():
         assert "DROP SCHEMA" in result.stderr, script
         # ห้ามให้รหัสผ่านหลุดออกมาในข้อความเตือน
         assert "care:care" not in result.stderr, f"{script} พิมพ์ credential ออกมาด้วย"
+
+
+def test_profile_check_is_declared_as_a_conformance_check():
+    """เพดานที่บังคับจริงแต่คนอื่นตรวจไม่ได้ ยังเป็นแค่คำบอกเล่า
+
+    agent-platform ถามตรง ๆ ว่าเราจะประกาศเทสนี้ไว้ให้คนอื่นตรวจเองไหม
+    (ai-collab dis-65134078 seq 16) — คำตอบคือประกาศ และเทสนี้กันไม่ให้มันหลุดออกไปเงียบ ๆ
+    """
+    import yaml
+
+    manifest = yaml.safe_load((ROOT / "platform-contract.yaml").read_text(encoding="utf-8"))
+    checks = {c["name"]: c for c in manifest["conformance"]["checks"]}
+    assert "profile_check" in checks, "platform-contract.yaml ต้องประกาศ profile_check"
+    assert (ROOT / "conformance" / "profile_check.py").exists()
+
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    for name in checks:
+        assert f"conformance/{name}.py" in workflow, f"{name} ประกาศไว้แต่ CI ไม่ได้รัน"

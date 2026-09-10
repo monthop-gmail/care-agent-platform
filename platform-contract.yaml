@@ -26,7 +26,7 @@ not_yet:
 
 conformance:
   status: passing
-  last_verified: "2026-08-22"
+  last_verified: "2026-09-11"
 
   # ครบ 3 ข้อของ ADR-0006:
   #   1. manifest            — ไฟล์นี้
@@ -34,7 +34,7 @@ conformance:
   #                            payload ที่ระบบผลิตออกมาจริง (58 audit event + policy decision)
   #                            กับ JSON Schema ที่ commit ที่ pin ไว้ · ไม่ใช่แค่ตรวจว่า $ref ถูกที่
   #                            (ตัวนั้นคือ conformance/drift_check.py ซึ่งรันคู่กัน)
-  #   3. release gate        — ทั้งสองตัวเป็น step ใน .github/workflows/ci.yml ที่รันทุก PR
+  #   3. release gate        — ทุกตัวเป็น step ใน .github/workflows/ci.yml ที่รันทุก PR
   #                            และทุก push เข้า main · CI ไม่ผ่าน = merge ไม่ได้
 
   checks:
@@ -55,6 +55,14 @@ conformance:
       scope: >-
         role ที่แอปใช้ต่อ DB ไม่ใช่ superuser และไม่มี BYPASSRLS
         — ถ้าใช่ RLS จะไร้ผลทั้งหมดโดยไม่มีสัญญาณ (step แรกที่แตะ DB ใน CI)
+    - name: profile_check
+      command: python conformance/profile_check.py
+      scope: >-
+        เพดานของ agent (`profiles/care-agent/profile.yaml` · agent-platform `profile/v1`)
+        ถูกบังคับจริง ไม่ใช่ไฟล์ที่วางอยู่เฉย ๆ — ทุกชื่อใน `tools.allow` เป็น capability
+        ที่ประกาศไว้จริง · `tools.deny` ปฏิเสธ agent ได้จริงเมื่อถาม `evaluate()`
+        · allow เป็นชุดปิด · action ที่ต้องมีคนสั่งไม่หลุดให้ agent · เพดานไม่กินคน
+        · 🔒 อ่านอย่างเดียว รันกับ deployment จริงได้
     - name: rls_check
       command: CONFORMANCE_ALLOW_DESTRUCTIVE=1 python conformance/rls_check.py
       scope: >-
