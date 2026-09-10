@@ -296,7 +296,10 @@ async def set_status(
         scope,
         source_kind=SOURCE_KIND,
         source_id=task.task_id,
-        reason=f"คำสั่งถูกเปลี่ยนเป็น '{status}': {reason.strip()}",
+        # 🔒 ไม่ส่งต่อประโยคที่คนพิมพ์ — เดิมเหตุผลของผู้ดูแลถูกก๊อปลง trail ของ *ทุก* job
+        #    ที่ถูกยกเลิก · คนที่อ่าน trail ของ job ได้ไม่จำเป็นต้องอ่านเหตุผลนั้นได้
+        #    ต้นฉบับอยู่ที่ event ของ careplan_task ใบเดียว ซึ่ง task_id ด้านล่างชี้ถึง
+        reason=f"careplan_task {task.task_id} ถูกเปลี่ยนเป็น '{status}'",
     )
 
     await audit.emit(

@@ -88,7 +88,7 @@ async def add_item(
         attributes={
             "record_type": "inventory_item",
             "patient_id": patient_id,
-            "name": item.name,
+            # 🔒 ชื่อของ (เช่นชื่อยา) อยู่บน care_inventory_item แถวนี้ — subject_id ชี้ถึง
             "category": category,
             "expires_on": expires_on.isoformat() if expires_on else None,
         },
@@ -157,7 +157,6 @@ async def check_before_buying(
             attributes={
                 "record_type": "inventory_item",
                 "patient_id": patient_id,
-                "name": name,
                 "at_home_count": len(usable),
             },
         )
@@ -259,7 +258,6 @@ async def close_item(
         attributes={
             "record_type": "inventory_item",
             "patient_id": item.patient_id,
-            "name": item.name,
         },
     )
     return item

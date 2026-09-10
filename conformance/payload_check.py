@@ -470,6 +470,7 @@ def main() -> int:
     schemas = fetch_schemas(pinned, offline=offline)
 
     from care_addons.ap_approval.services import as_approval
+    from care_addons.ap_audit.attributes import problems as attribute_problems
     from care_addons.ap_audit.services import as_platform_event
     from care_addons.ap_consent.services import as_consent_grant
     from care_addons.care_careplan.services import as_careplan_task
@@ -501,6 +502,13 @@ def main() -> int:
             failures.append(
                 f"event/v1 · {event.event_type} ({event.event_id}): "
                 f"{error.json_path} — {error.message}"
+            )
+        # `metadata` ของ `event/v1` เปิดไว้ทั้งหมด — schema จึงไม่มีทางฟ้องเรื่องนี้แทนเรา
+        # ข้อจำกัดนี้เป็นของเราเอง (ADR-0011) และผู้ตรวจภายนอกควรเห็นว่ามันถูกบังคับจริง
+        # กับ payload ที่ระบบผลิตออกมา ไม่ใช่แค่มี unit test
+        for problem in attribute_problems(payload.get("metadata") or {}):
+            failures.append(
+                f"attributes · {event.event_type} ({event.event_id}): {problem}"
             )
         if payload.get("care_event_type"):
             care_count += 1

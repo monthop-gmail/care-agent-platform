@@ -363,11 +363,19 @@ async def test_pausing_an_instruction_cancels_the_work_already_created_for_today
         assert open_now[0].closed_at is not None
         assert open_now[0].next_attempt_at is None
 
-        # ใบปิดท้ายบอกเหตุผลไว้ — ไม่ใช่หายไปเงียบ ๆ
+        # ใบปิดท้ายบอกไว้ว่างานจบแบบไหน — ไม่ใช่หายไปเงียบ ๆ
         from care_addons.ap_audit import services as audit
 
         trail = await audit.trail(session, sysscope, created[0].correlation_id)
         settled = [e for e in trail if e.event_type == "JOB_SETTLED"]
         assert [e.attributes["settled_as"] for e in settled] == ["cancelled"]
-        assert "ปวดเข่า" in settled[0].attributes["reason"]
         assert "JOB_COMPLETED" not in [e.event_type for e in trail]
+
+        # 🔒 แต่ประโยคที่ผู้ดูแลพิมพ์ไม่ได้ถูกก๊อปลง trail ของงานที่ถูกยกเลิก (ADR-0011)
+        #    เดิมมันไปโผล่ทุกใบ — คนที่อ่าน trail ของงานได้ ไม่จำเป็นต้องอ่านเหตุผลนั้นได้
+        assert not any("ปวดเข่า" in str(e.attributes or {}) for e in trail)
+        assert not any("ปวดเข่า" in str((e.transition or {}).get("reason", "")) for e in trail)
+
+        # ต้นฉบับยังอยู่ครบที่ event ของคำสั่งเอง ซึ่งเป็นที่เดียวที่มันควรอยู่
+        plan_trail = await audit.query(session, sysscope, subject_id=task.task_id)
+        assert any("ปวดเข่า" in (e.transition or {}).get("reason", "") for e in plan_trail)

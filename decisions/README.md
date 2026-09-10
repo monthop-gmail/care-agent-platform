@@ -15,6 +15,7 @@
 | [0008](0008-patient-channel-is-deterministic.md) | ช่องทางของผู้ป่วยตอบแบบ deterministic ไม่ผ่าน LLM | Accepted |
 | [0009](0009-approval-waits-forever.md) | คำขออนุมัติรอได้ตลอดกาล — เวลาไม่เคยอนุมัติอะไรให้ | Accepted |
 | [0010](0010-organizations-are-not-tenants.md) | องค์กรภายนอกไม่ใช่ tenant — เข้าถึงผ่าน consent ที่ให้บุคคล | Accepted |
+| [0011](0011-audit-holds-pointers-not-content.md) | audit เก็บตัวชี้ ไม่ใช่เนื้อหา — `attributes` เป็นชุดปิด | Accepted |
 
 ## กติกา
 

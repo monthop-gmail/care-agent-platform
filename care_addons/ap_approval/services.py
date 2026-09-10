@@ -134,7 +134,8 @@ async def request_approval(
             "capability": decision.capability,
             "authority_required": decision.authority,
             "subject_ref": f"{subject_type}:{subject_id}",
-            "summary": req.summary,
+            # 🔒 `summary` ที่คนพิมพ์อยู่บน ap_approval_request แถวนี้แล้ว (subject_id ชี้ถึง)
+            #    audit ไม่ก๊อปเนื้อหามาเก็บซ้ำในที่ที่ลบไม่ได้ (ADR-0011)
         },
     )
     return req
@@ -230,7 +231,7 @@ async def decide(
         transition={"from": "pending", "to": req.state},
         attributes={
             "decision": decision,
-            "reason": row.reason,
+            # 🔒 เหตุผลที่คนพิมพ์อยู่บน ap_approval.reason — ที่นี่เก็บแค่ว่าใครตัดสินอะไร
             "authority_type": who["type"],
             "authority_id": who["id"],
             "capability": req.capability,
@@ -282,7 +283,7 @@ async def withdraw(
         subject_type="approval",
         subject_id=req.request_id,
         transition={"from": "pending", "to": "withdrawn"},
-        attributes={"capability": req.capability, "reason": reason, "by": who["id"]},
+        attributes={"capability": req.capability, "by": who["id"]},
     )
     return req
 

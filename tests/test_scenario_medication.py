@@ -150,7 +150,10 @@ async def test_s4_conflict_between_two_doctors(session, tenant):
         conflict = [e for e in events if e.care_event_type == "care.medication.conflict"]
         assert conflict, "ต้องมี event care.medication.conflict"
         assert conflict[0].attributes["requires"] == "reconciliation_by_human"
-        assert len(conflict[0].attributes["versions"]) == 2
+        assert len(conflict[0].attributes["version_ids"]) == 2
+        # 🔒 audit ชี้ไปที่ใบยา ไม่ได้ก๊อปชื่อยา/ตารางกินยามาเก็บไว้เอง (ADR-0011)
+        assert "normalized_name" not in conflict[0].attributes
+        assert "versions" not in conflict[0].attributes
 
         # UI ที่แสดงยามื้อเช้าต้องรู้ว่ารายการนี้ยังสะสางไม่เสร็จ
         doses = await meds.doses_for_meal(session, scope, patient.patient_id, "before_meal")

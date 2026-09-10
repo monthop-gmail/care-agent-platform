@@ -305,7 +305,6 @@ async def complete_step(
             "record_type": "activity_step",
             "patient_id": step.patient_id,
             "activity_id": step.activity_id,
-            "label": step.label,
         },
     )
     await _activate_next_step(session, scope, activity)
@@ -408,7 +407,6 @@ async def sweep_stalled(session: AsyncSession, scope: TenantScope) -> int:
                 "record_type": "activity_step",
                 "patient_id": step.patient_id,
                 "activity_id": step.activity_id,
-                "label": step.label,
                 "stalled_minutes": int(stalled_for.total_seconds() // 60),
             },
         )

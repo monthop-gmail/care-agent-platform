@@ -34,7 +34,7 @@ conformance:
   # ครบ 3 ข้อของ ADR-0006:
   #   1. manifest            — ไฟล์นี้
   #   2. conformance test    — conformance/payload_check.py รัน scenario จริงแล้ว validate
-  #                            payload ที่ระบบผลิตออกมาจริง (58 audit event + policy decision)
+  #                            payload ที่ระบบผลิตออกมาจริง (112 audit event + policy decision)
   #                            กับ JSON Schema ที่ commit ที่ pin ไว้ · ไม่ใช่แค่ตรวจว่า $ref ถูกที่
   #                            (ตัวนั้นคือ conformance/drift_check.py ซึ่งรันคู่กัน)
   #   3. release gate        — ทุกตัวเป็น step ใน .github/workflows/ci.yml ที่รันทุก PR
@@ -50,6 +50,8 @@ conformance:
         payload จริงที่ระบบผลิต validate ผ่าน event/v1 · policy/v1 · error/v1 · consent/v1
         · approval/v1 (audit event + consent grant ทั้งใบที่ยังใช้ได้และใบที่ถูกเพิกถอน
         + ใบอนุมัติที่เกิดจากคนกดจริงใน scenario)
+        · ตรวจ `attributes` ของทุก event กับชุดปิดที่ประกาศไว้ (ADR-0011) — `event/v1`
+        เปิด `metadata` ไว้ทั้งหมด schema จึงฟ้องแทนไม่ได้ ข้อจำกัดนี้เป็นของ repo นี้เอง
     - name: migration_check
       command: CONFORMANCE_ALLOW_DESTRUCTIVE=1 python conformance/migration_check.py
       scope: schema ที่สร้างจาก migration ล้วน ๆ ตรงกับ models — แก้ models แล้วลืม revision = CI แดง
@@ -102,7 +104,19 @@ extensions:
       ที่ต้องคง `source` ไว้ตลอดไปตาม event/v1
 
 # ช่องว่างที่เจอจากการ implement จริง
-gaps: []
+gaps:
+  - id: no-rule-for-which-field-may-hold-human-text
+    detail: >-
+      `event/v1` เปิด `metadata` ไว้ทั้งหมด (`{"type": "object"}`) ห้ามแค่ chain-of-thought
+      · repo นี้ปิดเป็นชุดปิดฝั่งตัวเองแล้ว (ADR-0011) และพบว่าปิดแค่ `metadata` ไม่พอ —
+      `transition.reason` กับ `error.message` เป็นฟิลด์ข้อความที่ contract นิยามเอง
+      และเป็นที่เดียวที่เก็บ "เหตุผลที่คนหยุดคำสั่งของหมอ" ซึ่ง ADR-0006 บังคับว่าต้องตอบได้
+      · กฎที่บอกแค่ "audit ห้ามถือ PII ของ subject" จะทำให้ระบบที่ทำถูกกลายเป็นระบบที่
+      conform ไม่ได้ · สิ่งที่ต้องมีคือกฎว่าฟิลด์ไหนถือข้อความของมนุษย์ได้ และกติกาการเก็บ/ลบ
+      ของฟิลด์นั้น
+    tracked_by: >-
+      RFC ที่ agent-platform จะเปิดที่ devfactory-core (ตกลงไว้ที่ dis-65134078 seq 24
+      ว่ารอผลการปิด attributes ของ repo นี้ก่อน — ใบนี้คือผลนั้น)
 
 resolved_gaps:
   - id: consent-conditions-that-must-still-hold

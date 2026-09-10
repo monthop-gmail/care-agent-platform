@@ -55,7 +55,7 @@ def care_action(
                 subject_type=subject_type,
                 subject_id=new_id("act"),
                 policy_result=decision.as_policy_result(),
-                attributes={"capability": capability, "reason": decision.reason},
+                attributes={"capability": capability, "policy_reason": decision.reason},
             )
             # 🔒 profile ปฏิเสธ = ห้ามเดินต่อเสมอ ไม่ว่า action นั้นจะ autonomous หรือไม่
             #    (autonomous=False แปลว่า "ต้องมีคนเกี่ยวข้อง" ไม่ใช่ "ใครเรียกก็ได้")
