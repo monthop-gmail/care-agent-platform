@@ -334,12 +334,17 @@ async def _deliver(
             subject_id=new_id("exec"),
             job_id=job.care_job_id if job is not None else None,
             severity=notification.severity,
+            # 🔒 ไม่วางข้อความดิบจากช่องทางลงใน error.message — `error/v1` เขียนไว้ว่าฟิลด์นี้
+            #    ห้ามมี credential / PII / เนื้อหา prompt · ค่าที่เคยวางคือ str(e) ของ
+            #    exception ใด ๆ ที่ sender โยนออกมา ซึ่งอาจมีตัวข้อความที่กำลังส่งอยู่ในนั้น
+            #    (`register_sender` เปิดให้ addon ไหนก็เสียบได้ · เราคุมเนื้อในไม่ได้)
+            #    ตัวข้อความ error ดิบยังอยู่ครบที่ care_notification.delivery_error
             error=audit.make_error(
                 "care.notification.delivery_failed",
                 "external_dependency",
-                f"ส่งไม่ออกทางช่องทาง {notification.channel}: {notification.delivery_error}",
+                f"ส่งไม่ออกทางช่องทาง {notification.channel}",
                 retryable=True,
-                details={"channel": notification.channel},
+                details={"channel": notification.channel, "notification_id": notification.id},
             ),
             attributes={
                 "patient_id": notification.patient_id,

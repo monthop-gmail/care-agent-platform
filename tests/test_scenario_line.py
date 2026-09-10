@@ -236,6 +236,12 @@ async def test_delivery_failure_is_visible_not_silent(session, tenant, monkeypat
         assert error["retryable"] is True
         assert "ส่งไม่ออก" in error["message"]
 
+        # 🔒 `error/v1` ห้าม message มี credential / PII / เนื้อหา prompt — เราเคยวาง
+        #    ข้อความดิบจากช่องทาง (str(e) ของ exception ใด ๆ ที่ sender โยน) ลงตรงนี้
+        #    ตัวมันเองยังอยู่ครบบนแถวของ notification ซึ่งอ่านผ่านสิทธิ์ตามปกติ
+        assert "LINE API ล่ม" not in error["message"]
+        assert error["details"]["notification_id"] == rows[0].id
+
 
 async def test_unbound_patient_does_not_block_the_loop(session, tenant, outbox):
     """ยังไม่ได้ผูก LINE = ส่งไม่ถึง แต่ closed loop ต้องเดินต่อและ escalate ตามปกติ"""
