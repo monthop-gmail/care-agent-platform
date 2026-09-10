@@ -112,13 +112,14 @@ curl -X POST localhost:8000/api/care/line/pairing-codes \
 
 ### Dev บนเครื่อง
 
-ต้องมี pstack checkout ไว้ข้าง ๆ (tag เดียวกับ `PSTACK_REF`)
+ต้องมี pstack checkout ไว้ข้าง ๆ (tag เดียวกับ `PSTACK_REF`) — วางที่ `pstack_src/`
+ให้ตรงกับที่ CI ทำ จะได้เจอปัญหาแบบเดียวกับ CI ตั้งแต่บนเครื่อง (โฟลเดอร์นี้ gitignore แล้ว)
 
 ```bash
-git clone --branch v0.3.1 https://github.com/willpower-institute/pstack.git ../pstack
-python3 -m venv .venv && .venv/bin/pip install -e "../pstack[dev]"
+git clone --branch v0.5.1 https://github.com/willpower-institute/pstack.git pstack_src
+python3 -m venv .venv && .venv/bin/pip install -e "./pstack_src[dev]"
 
-export PSTACK_ADDONS_PATHS=../pstack/addons,care_addons
+export PSTACK_ADDONS_PATHS=pstack_src/addons,care_addons
 .venv/bin/uvicorn main:app --reload
 
 .venv/bin/python -m pytest tests/ -q             # เทสบน sqlite (ไม่ต้องมี Postgres)
@@ -159,6 +160,35 @@ conformance/    drift check เทียบกับ contract ของ agent-pl
 tests/          scenario tests (สำคัญกว่า unit test ในโปรเจกต์นี้)
 ref/            บทสนทนา/blueprint ต้นทาง — เก็บไว้ให้ทุกทีมอ้างอิงร่วมกัน
 ```
+
+## อัปเกรด pstack v0.3.1 → v0.5.1 (breaking ฝั่ง operator 2 รอบ)
+
+**โค้ดโดเมนไม่ต้องแก้เลย** — CHANGELOG ของ pstack ระบุว่า v0.3.2/v0.5.0/v0.5.1 ไม่มี breaking
+ฝั่ง API · ที่ breaking คือ **ตัวแปรสภาพแวดล้อม** ซึ่งทำให้ **บูตไม่ขึ้น** ถ้าไม่แก้ก่อน
+
+```bash
+# 1) คีย์ต้องยาว ≥32 และไม่ใช่ค่าที่เดาได้ (v0.4.0) — ค่า placeholder เดิมของเราอยู่ในรายการนั้น
+python3 -c 'import secrets; print(secrets.token_urlsafe(48))'   # → PSTACK_SECRET_KEY
+
+# 2) รหัส admin ต้อง ≥12 และไม่ใช่ "admin" (v0.4.1)
+#    ⚠️ ค่านี้ใช้ตอน "สร้าง admin ครั้งแรก" เท่านั้น — deployment เดิมที่มี admin อยู่แล้ว
+#    แก้ .env ไม่พอ ต้องเปลี่ยนรหัสจริงใน DB ด้วย:
+docker compose exec app python cli.py set-password admin@example.com
+
+# 3) production ตั้ง PSTACK_DEBUG=false — ไม่งั้นกฎสองข้อบนเป็นแค่คำเตือน
+#    และ /docs /redoc /openapi.json จะเปิดสาธารณะ
+```
+
+**ถ้ารันหลัง reverse proxy** ต้องตั้ง `FORWARDED_ALLOW_IPS` เป็น IP ของ proxy ไม่งั้น
+rate limit ต่อ IP (ใหม่ใน v0.4.0) จะนับทุก request เป็น IP เดียว = กลายเป็นลิมิตรวมทั้งระบบ
+
+**RLS ไม่กระทบ** — v0.4.0 กำหนดว่า role ของแอปต้องเป็นเจ้าของตาราง ซึ่ง
+`deploy/db-init/10-app-role.sh` ของเราโอน ownership ให้อยู่แล้วตั้งแต่แรก
+(owner ≠ superuser · `FORCE ROW LEVEL SECURITY` ยังกรอง owner — `rls_check` ยืนยันแล้ว)
+
+ที่ตรวจแล้วว่าใช้ได้จริงบน v0.5.1: 147 เทสทั้ง sqlite/Postgres · conformance ครบ 6 ตัว ·
+`docker compose up` บูตครบ 23 โมดูล · `/docs` ปิดจริงเมื่อ `debug=false` ·
+rate limit ตัดที่ครั้งที่ 5 · worker เดิน `care_tick`/`care_daily_tick` ตามปกติ
 
 ## ย้าย deployment เดิมเข้า `tenancy` ของ kernel (adopt)
 

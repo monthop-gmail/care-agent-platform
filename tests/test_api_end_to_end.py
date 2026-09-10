@@ -6,13 +6,17 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 
 @pytest.fixture(scope="module")
 def token(client) -> str:
+    # รหัส admin มาจาก PSTACK_ADMIN_PASSWORD ที่ conftest ตั้ง — pstack v0.4.1+ ห้ามใช้ "admin"
     response = client.post(
-        "/api/auth/login", json={"email": "admin@example.com", "password": "admin"}
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": os.environ["PSTACK_ADMIN_PASSWORD"]},
     )
     assert response.status_code == 200, response.text
     return response.json()["access_token"]

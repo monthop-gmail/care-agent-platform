@@ -47,7 +47,12 @@ MODULES = [
 # CI รันชุดเดียวกันสองรอบ: sqlite (เร็ว) และ Postgres (ตรงกับ production)
 # ตั้ง PSTACK_DATABASE_URL มาก่อนได้เพื่อชี้ไป Postgres
 os.environ.setdefault("PSTACK_DATABASE_URL", "sqlite+aiosqlite:///./test_care.db")
-os.environ.setdefault("PSTACK_SECRET_KEY", "test-secret")
+# 🔒 pstack v0.4.0+ ปฏิเสธการบูตถ้าคีย์อ่อน/สั้นกว่า 32 — และมี "test-secret" อยู่ในรายการ
+#    ค่าที่เดาได้ด้วย · ค่านี้ยาวพอและไม่ได้ใช้ที่ไหนจริง (CI ไม่มี .env ให้ debug ช่วย)
+os.environ.setdefault("PSTACK_SECRET_KEY", "test-only-not-a-real-secret-0123456789abcdef")
+os.environ.setdefault("PSTACK_ADMIN_PASSWORD", "test-only-admin-password")
+# /openapi.json ปิดเมื่อ debug=false ตั้งแต่ v0.4.0 — เทสที่ตรวจว่า route ถูก mount ต้องใช้มัน
+os.environ.setdefault("PSTACK_EXPOSE_DOCS", "true")
 os.environ["PSTACK_MODULES"] = ",".join(MODULES)
 
 import pytest
