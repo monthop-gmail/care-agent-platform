@@ -131,10 +131,10 @@ async def propose_version(
             "record_type": "medication_version",
             "patient_id": patient_id,
             "medication_id": version.medication_id,
-            "name": name,
+            # 🔒 ชื่อยาคู่กับ patient_id คือข้อมูลสุขภาพของคนที่ระบุตัวได้ ไม่ใช่ metadata
+            #    ชื่อ ตาราง และเลขที่ใบสั่งยา อยู่บน care_medication_version แถวนี้
             "instruction_source": instruction_source,
             "source_organization_id": source_organization_id,
-            "source_document_ref": source_document_ref,
         },
     )
 
@@ -405,7 +405,10 @@ async def detect_conflicts(session: AsyncSession, scope: TenantScope, patient_id
                 "patient_id": patient_id,
                 # 🔒 ระบบไม่เลือกว่าใบไหนถูก — ส่งข้อเท็จจริงให้คนตัดสิน
                 "requires": "reconciliation_by_human",
-                **detail,
+                # 🔒 เดิมกาง `detail` ทั้งก้อนลง audit — ในนั้นมีชื่อยา ตารางกินยา และชื่อผู้สั่ง
+                #    ผู้อ่านที่ต้องตัดสินใจต้องอ่านจากแถวจริง ซึ่งผ่าน consent · ไม่ใช่จาก trail
+                "version_ids": [v.version_id for v in group],
+                "version_count": len(group),
             },
         )
     return conflicts

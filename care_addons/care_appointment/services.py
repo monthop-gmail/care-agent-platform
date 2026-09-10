@@ -93,8 +93,8 @@ async def create_appointment(
             "record_type": "appointment",
             "patient_id": patient_id,
             "starts_at": starts_at.isoformat(),
-            "specialty": specialty,
-            "purpose": purpose,
+            # 🔒 แผนกที่ไปตรวจ + patient_id = ข้อมูลสุขภาพของคนที่ระบุตัวได้ ไม่ใช่ metadata
+            #    ทั้ง specialty และ purpose อยู่บน care_appointment แถวนี้ (subject_id ชี้ถึง)
         },
     )
     return appointment

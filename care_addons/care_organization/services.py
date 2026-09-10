@@ -76,7 +76,7 @@ async def add_organization(
         # ไม่ใส่ care_event_type — ทะเบียนองค์กรไม่ผูกกับผู้ป่วยรายใดรายหนึ่ง
         severity="low",
         transition={"to": "active", "reason": "บันทึกองค์กรที่ครอบครัวใช้"},
-        attributes={"record_type": "organization", "name": org.name, "kind": kind},
+        attributes={"record_type": "organization", "organization_id": org.organization_id, "kind": kind},
     )
     return org
 
@@ -164,7 +164,6 @@ async def add_member(
         attributes={
             "record_type": "org_membership",
             "organization_id": org.organization_id,
-            "organization_name": org.name,
             "principal_id": principal.id,
             "role": role,
         },
@@ -343,7 +342,6 @@ async def grant_clinical_access(
             "record_type": "consent_grant",
             "patient_id": patient_id,
             "organization_id": organization_id,
-            "organization_name": org.name,
             "grantee_id": principal.id,
             "scopes": requested,
         },

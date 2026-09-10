@@ -155,7 +155,7 @@ async def create_job(
             "patient_id": patient_id,
             "source_kind": source_kind,
             "source_id": source_id,
-            "label": label,
+            # 🔒 `label` คือสิ่งที่ต้องทำ (เช่นชื่อยา) — อยู่บน care_job แถวนี้แล้ว
             "due_at": due_at.isoformat(),
         },
     )
@@ -215,7 +215,6 @@ async def _settle(
     session: AsyncSession,
     scope: TenantScope,
     job: CareJob,
-    reason: str,
     *,
     settled_as: str,
 ) -> None:
@@ -241,7 +240,7 @@ async def _settle(
             subject_id=job.care_job_id,
             job_id=job.care_job_id,
             severity=job.severity,
-            attributes={"patient_id": job.patient_id, "reason": reason, "attempts": job.attempts},
+            attributes={"patient_id": job.patient_id, "attempts": job.attempts},
         )
 
     # นับตาม job_id — ขอบเขตเดียวกับที่ผู้อ่าน trail จัดกลุ่ม · +1 คือใบปิดท้ายใบนี้เอง
@@ -264,7 +263,8 @@ async def _settle(
         attributes={
             "patient_id": job.patient_id,
             "settled_as": settled_as,
-            "reason": reason,
+            # 🔒 เดิมมี `reason` ซึ่งบางเส้นทางเป็นประโยคที่ผู้ดูแลพิมพ์เอง · `settled_as`
+            #    ตอบว่า trail จบแบบไหนได้อยู่แล้ว และ STATE_TRANSITION ก่อนหน้าเก็บเหตุผลไว้
             "attempts": job.attempts,
             "event_count": int(counted or 0) + 1,
         },
@@ -503,7 +503,7 @@ async def _remind(session: AsyncSession, scope: TenantScope, job: CareJob, patie
         policy_result=decision.as_policy_result(),
         attributes={"patient_id": job.patient_id, "attempt": job.attempts, "capability": capability},
     )
-    await _send(
+    notification = await _send(
         session,
         scope,
         job,
@@ -521,7 +521,14 @@ async def _remind(session: AsyncSession, scope: TenantScope, job: CareJob, patie
         f"ส่ง reminder ครั้งที่ {job.attempts}",
         care_event_type=SENT_EVENT.get(job.source_kind, "care.reminder.sent"),
         policy_result=decision.as_policy_result(),
-        attributes={"attempt": job.attempts, "asked_directly": ask_directly, "text": text},
+        # 🔒 เดิมเก็บ `text` ทั้งประโยคลง audit — ข้อความนั้น interpolate `job.label` เข้าไป
+        #    (เช่นชื่อยา) จึงเป็นข้อมูลสุขภาพของคนที่ระบุตัวได้ · ตัวข้อความอยู่บน
+        #    care_notification ซึ่งอ่านได้ผ่านสิทธิ์ตามปกติ ต่างจาก audit ที่ลบไม่ได้
+        attributes={
+            "attempt": job.attempts,
+            "asked_directly": ask_directly,
+            "notification_id": notification.id,
+        },
     )
 
 
@@ -540,10 +547,7 @@ async def _mark_missed(session: AsyncSession, scope: TenantScope, job: CareJob, 
     if pol.notifies_caregiver(job.severity):
         await escalate(session, scope, job)
     else:
-        await _settle(
-            session, scope, job,
-            "missed · severity ต่ำ เก็บไว้ใน daily summary", settled_as="missed",
-        )
+        await _settle(session, scope, job, settled_as="missed")
 
 
 async def escalate(session: AsyncSession, scope: TenantScope, job: CareJob) -> list[CareNotification]:
@@ -588,7 +592,7 @@ async def escalate(session: AsyncSession, scope: TenantScope, job: CareJob) -> l
             policy_result=decision.as_policy_result(),
             attributes={"targets": []},
         )
-        await _settle(session, scope, job, "escalated · ไม่มีผู้รับ", settled_as="escalated")
+        await _settle(session, scope, job, settled_as="escalated")
         return []
 
     targets = team if pol.notifies_all_targets(job.severity) else team[:1]
@@ -705,7 +709,7 @@ async def acknowledge(
         care_event_type=CONFIRMED_EVENT.get(job.source_kind, "care.reminder.acknowledged"),
         evidence=evidence,
     )
-    await _settle(session, scope, job, "confirmed", settled_as="confirmed")
+    await _settle(session, scope, job, settled_as="confirmed")
     return job
 
 
@@ -722,7 +726,7 @@ async def caregiver_acknowledge(session: AsyncSession, scope: TenantScope, care_
         evidence={"kind": "caregiver_confirmed", "recorded_by": scope.principal.as_dict()},
     )
     # ผู้ดูแลรับเรื่องแทน = วงจรจบ แต่สิ่งที่ผู้ป่วยต้องทำยังไม่ได้ทำ — ไม่ใช่การส่งมอบ
-    await _settle(session, scope, job, "caregiver acknowledged", settled_as="acknowledged")
+    await _settle(session, scope, job, settled_as="acknowledged")
     return job
 
 
@@ -777,7 +781,7 @@ async def cancel_jobs(
     for job in result.scalars():
         job.next_attempt_at = None
         await _transition(session, scope, job, "cancelled", reason)
-        await _settle(session, scope, job, reason, settled_as="cancelled")
+        await _settle(session, scope, job, settled_as="cancelled")
         cancelled.append(job)
     return cancelled
 

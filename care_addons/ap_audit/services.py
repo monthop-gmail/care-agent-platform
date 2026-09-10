@@ -15,6 +15,7 @@ from core.tenancy import TenantScope, new_id, validate_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from care_addons.ap_audit.attributes import problems as attribute_problems
 from care_addons.ap_audit.models import ApAuditEvent
 
 # 7 ค่าขั้นต่ำของ event/v1 — ชุดเปิด เพิ่มได้แบบ additive แต่ลบ/เปลี่ยนความหมายไม่ได้
@@ -149,6 +150,14 @@ async def emit(
         raise EventRejected(
             f"ห้ามเก็บ private reasoning / chain-of-thought เป็น audit record: {sorted(leaked)}"
         )
+
+    # `attributes` เป็นชุดปิด — audit เก็บตัวชี้ ไม่ใช่เนื้อหา (ADR-0011)
+    #
+    # 🔒 `event/v1` นิยาม `metadata` ไว้แค่ `{"type": "object"}` ซึ่งเปิดทั้งหมด
+    #    ข้อจำกัดนี้เป็นของเราเอง ไม่ใช่ของ platform — เพราะเราเคยเก็บชื่อยาคู่ patient_id
+    #    และข้อความที่ส่งให้ผู้ป่วยทั้งประโยคลงที่นี่มาก่อน
+    if found := attribute_problems(attrs):
+        raise EventRejected("attributes ไม่ผ่านชุดที่ประกาศไว้ — " + " · ".join(found))
 
     event = ApAuditEvent(
         event_id=new_id("evt"),

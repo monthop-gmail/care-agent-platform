@@ -251,7 +251,7 @@ async def _emit(
             "record_type": "home_item",
             "patient_id": item.patient_id,
             "kind": item.kind,
-            "label": item.label,
+            # 🔒 `label` ที่คนตั้งเอง (เช่น "ลิ้นชักยาข้างเตียง") อยู่บน care_home_item แถวนี้
         },
     )
 
