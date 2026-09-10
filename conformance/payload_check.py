@@ -37,7 +37,8 @@ RAW = "https://raw.githubusercontent.com/{repo}/{commit}/contracts/{path}"
 PLATFORM_HOST = "https://schemas.agent-platform.internal/"
 
 os.environ.setdefault("PSTACK_DATABASE_URL", f"sqlite+aiosqlite:///{CHECK_DB}")
-os.environ.setdefault("PSTACK_SECRET_KEY", "payload-check")
+os.environ.setdefault("PSTACK_SECRET_KEY", "test-only-not-a-real-secret-0123456789abcdef")
+os.environ.setdefault("PSTACK_ADMIN_PASSWORD", "test-only-admin-password")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,care_routine,"

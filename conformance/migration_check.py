@@ -31,7 +31,8 @@ for candidate in (ROOT / "pstack_src", ROOT.parent / "pstack"):
 
 CHECK_DB = ROOT / "migration_check.db"
 os.environ.setdefault("PSTACK_DATABASE_URL", f"sqlite+aiosqlite:///{CHECK_DB}")
-os.environ.setdefault("PSTACK_SECRET_KEY", "migration-check")
+os.environ.setdefault("PSTACK_SECRET_KEY", "test-only-not-a-real-secret-0123456789abcdef")
+os.environ.setdefault("PSTACK_ADMIN_PASSWORD", "test-only-admin-password")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"

@@ -35,7 +35,8 @@ for candidate in (ROOT / "pstack_src", ROOT.parent / "pstack"):
         sys.path.insert(0, str(candidate))
         break
 
-os.environ.setdefault("PSTACK_SECRET_KEY", "rls-check")
+os.environ.setdefault("PSTACK_SECRET_KEY", "test-only-not-a-real-secret-0123456789abcdef")
+os.environ.setdefault("PSTACK_ADMIN_PASSWORD", "test-only-admin-password")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,"

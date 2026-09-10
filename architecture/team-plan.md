@@ -79,8 +79,8 @@ M6 ── Multi-organization (A+E)
 
 ## สถานะปัจจุบัน (2026-08-19)
 
-**เดินได้แล้ว** — `docker compose up` ขึ้น, `pytest` 139 เทสผ่านทั้ง sqlite และ Postgres,
-conformance ครบ 5 ตัว (drift · payload · migration · db_role · rls)
+**เดินได้แล้ว** — `docker compose up` ขึ้นบน pstack v0.5.1, `pytest` 147 เทสผ่านทั้ง sqlite และ
+Postgres, conformance ครบ 6 ตัว (drift · payload · migration · db_role · rls · profile)
 
 | addon | สถานะ |
 |---|---|
@@ -142,6 +142,7 @@ conformance ครบ 5 ตัว (drift · payload · migration · db_role · r
 | [pstack#6](https://github.com/willpower-institute/pstack/issues/6) | `line.message.received` ไม่มี `reply_token` | ✅ **v0.2.2** — event พก `reply_token` + มี `client.respond()` (reply ก่อน แล้ว fallback push) · `care_line` ใช้แล้ว ตอบผู้ป่วยไม่กิน push quota |
 | [pstack#7](https://github.com/willpower-institute/pstack/issues/7) | `makemigration` ออก revision เปล่าเงียบ ๆ | ✅ **v0.2.1** — ปฏิเสธ + ลบไฟล์เปล่าให้ + บอกวิธีแก้ |
 | [pstack#8](https://github.com/willpower-institute/pstack/issues/8) | DX: engine ผูก event loop + accessor ของ periodic job | ✅ **v0.2.1** — `core.testing.isolated_session` + `core.jobs.periodic_jobs()` (เทสเราใช้ public accessor แล้ว) |
+| — | **อัปเกรด pin v0.3.1 → v0.5.1** (2026-09-11) | ✅ โค้ดโดเมนไม่ต้องแก้ · breaking ฝั่ง operator 2 รอบ (`PSTACK_SECRET_KEY` ≥32 · `PSTACK_ADMIN_PASSWORD` ≥12) — ขั้นตอนอยู่ใน [README](../README.md#อัปเกรด-pstack-v031--v051-breaking-ฝั่ง-operator-2-รอบ) · ได้ security ทั้งชุดที่ consumer อื่นผลักดันเข้า kernel (rate limit · timing attack · security headers · upload streaming) |
 | [pstack#3](https://github.com/willpower-institute/pstack/issues/3) | multi-tenancy ใน kernel (Phase 5) | 🟡 ไม่ติด — เคาะแล้ว: RLS + คง `scoped()` · consent คงไว้ที่ repo นี้ ([ADR-0007](../decisions/0007-consent-and-data-access.md)) · kernel ชื่อ `tenancy` (ตัด `ap_`) · **เราลบ `ap_tenancy` เรียบร้อยแล้ว 2026-08-19** |
 | [pstack-app-template#1](https://github.com/willpower-institute/pstack-app-template/issues/1) | Dockerfile ของ template copy แค่ addons | ✅ แก้ทั้งสองฝั่งแล้ว |
 
