@@ -100,7 +100,7 @@ def main() -> int:
 
     # (1) ทุกชื่อใน allow ต้องเป็น capability ที่ประกาศไว้จริงใน policy config
     #     ข้อนี้คือข้อที่เราพลาดมาก่อน — ชื่อที่ไม่มีอยู่จริงทำให้เพดานเป็น no-op
-    unknown = [c for c in profile.allow if c not in policy.capabilities]
+    unknown = [c for c in (profile.allow or []) if c not in policy.capabilities]
     failures += [f"tools.allow มีชื่อที่ไม่มีใน policy config: {c}" for c in unknown]
 
     # (2) deny ที่ตรงกับ capability จริง ต้องถูกปฏิเสธจริงเมื่อผู้กระทำเป็น agent
@@ -153,6 +153,19 @@ def main() -> int:
                 f"'{capability}' ถูกปฏิเสธสำหรับ 'human' ด้วย — เพดานของ agent ไม่ควรกินคน"
             )
 
+    # (8) เพดานเชิงชื่อผูกกับ namespace ที่มันตั้งชื่อ (profile/v1 v1.1.0 · ADR-0026)
+    #     `load_policy()` reject การผูกตั้งแต่ boot อยู่แล้ว — ตรงนี้รายงานให้ผู้ตรวจเห็นว่า
+    #     ไฟล์นี้ตั้งเพดานด้วยชื่อจริง ๆ และชื่อเหล่านั้นอยู่ใน namespace เดียวกับระบบนี้
+    if not profile.has_name_ceiling:
+        failures.append(
+            "profile ไม่มี tools.allow — ไม่มีเพดานเชิงชื่อ · repo นี้ตั้งใจให้มี "
+            "เพราะ allow เป็นชุดปิดคือสิ่งที่กัน capability ที่เพิ่มใหม่ไม่ให้หลุดให้ agent เอง"
+        )
+    elif not any(profile.allows(c) for c in policy.capabilities):
+        failures.append(
+            "tools.allow ไม่ตรงกับ capability ของ policy เลยสักตัว — profile ถูกใช้ผิด namespace"
+        )
+
     # (7) undoes — การยกเลิกต้องไม่แพงกว่าการกระทำที่มันยกเลิก (agent-platform ADR-0029)
     #     `load_policy()` raise ตั้งแต่ boot อยู่แล้ว · ตรงนี้รายงานให้ผู้ตรวจภายนอกเห็นด้วย
     failures += undo_violations(policy)
@@ -166,7 +179,7 @@ def main() -> int:
 
     print(
         f"✓ เพดานของ agent conform profile/v1 และบังคับจริง — profile '{profile.profile_id}' "
-        f"อนุญาต {len(profile.allow)} ห้าม {len(profile.deny)} · "
+        f"อนุญาต {len(profile.allow or [])} ห้าม {len(profile.deny)} · "
         f"ตรวจกับ {len(policy.capabilities)} capability ที่ประกาศไว้ "
         f"({len(DECLARED)} ตัวมี @care_action · {len(declared_undo)} คู่ประกาศ undoes)"
     )

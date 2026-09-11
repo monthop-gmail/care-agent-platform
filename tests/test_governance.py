@@ -358,3 +358,76 @@ def test_stopping_a_medication_is_not_declared_as_an_undo():
 
     stop = load_policy().capabilities["medication.regimen.stop"]
     assert "undoes" not in stop
+
+
+# ── profile/v1 v1.1.0 · ADR-0026 — เพดานเชิงชื่อผูกกับ namespace ที่มันตั้งชื่อ ────
+
+
+def _profile_at(tmp_path, tools_block: str):
+    """เขียน profile ชั่วคราวแล้วบังคับให้ loader อ่านตัวนั้น (cache ต้องล้างทั้งสองชั้น)"""
+    from care_addons.ap_policy import engine
+    from care_addons.ap_policy import profile as profile_module
+
+    path = tmp_path / "profile.yaml"
+    path.write_text(
+        "profile_id: test-profile\n"
+        "display_name: Test\n"
+        f"{tools_block}"
+        "policy:\n"
+        "  authority_map: { low: auto, medium: notify, high: approval_required,"
+        " critical: human_command_required }\n",
+        encoding="utf-8",
+    )
+    profile_module.load_profile.cache_clear()
+    engine.load_policy.cache_clear()
+    return path
+
+
+def test_a_profile_without_an_allow_list_has_no_ceiling_by_name(tmp_path, monkeypatch):
+    """"ไม่มี allow" กับ "allow: []" เป็นคนละความหมาย (profile/v1 v1.1.0)
+
+    เดิมเรายุบสองอันนี้เป็นค่าเดียว ผลคือ profile ที่ไม่มี `tools` เลยกลายเป็น
+    deny-all เงียบ ๆ — ดูเหมือนระบบที่เข้มมาก ทั้งที่จริงคือ agent ทำงานไม่ได้เลย
+    และไม่มีใครรู้ว่าทำไม
+    """
+    from care_addons.ap_policy import profile as profile_module
+
+    path = _profile_at(tmp_path, "")
+    monkeypatch.setattr(profile_module, "DEFAULT_PROFILE_PATH", path)
+    profile_module.load_profile.cache_clear()
+    try:
+        loaded = profile_module.load_profile()
+        assert loaded.has_name_ceiling is False
+        assert loaded.allows("anything.at.all") is True
+
+        empty = _profile_at(tmp_path, "tools:\n  allow: []\n")
+        monkeypatch.setattr(profile_module, "DEFAULT_PROFILE_PATH", empty)
+        profile_module.load_profile.cache_clear()
+        loaded = profile_module.load_profile()
+        assert loaded.has_name_ceiling is True
+        assert loaded.allows("anything.at.all") is False
+    finally:
+        profile_module.load_profile.cache_clear()
+
+
+def test_a_profile_from_another_namespace_is_rejected_at_boot(tmp_path, monkeypatch):
+    """allow ที่ไม่ตรงกับ capability ของระบบนี้เลย = ถูกใช้ผิด namespace
+
+    🔒 ต้อง reject การผูก ไม่ใช่ปล่อยให้กลายเป็น deny-all เงียบ ๆ · fail แบบหลังคือ
+       ระบบที่ "ปลอดภัยมาก" เพราะ agent ทำอะไรไม่ได้เลย ซึ่งไม่มีใครอ่านออกว่าเป็นบั๊ก
+    """
+    import pytest as _pytest
+
+    from care_addons.ap_policy import engine
+    from care_addons.ap_policy import profile as profile_module
+
+    other = _profile_at(tmp_path, "tools:\n  allow:\n    - github.issue.create\n")
+    monkeypatch.setattr(profile_module, "DEFAULT_PROFILE_PATH", other)
+    profile_module.load_profile.cache_clear()
+    engine.load_policy.cache_clear()
+    try:
+        with _pytest.raises(engine.PolicyConfigError, match="ผิด namespace"):
+            engine.load_policy()
+    finally:
+        profile_module.load_profile.cache_clear()
+        engine.load_policy.cache_clear()
