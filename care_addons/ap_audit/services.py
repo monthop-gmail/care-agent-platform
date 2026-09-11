@@ -60,6 +60,24 @@ ERROR_CATEGORIES = {
 ERROR_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
+def actor_ref(principal: dict | None) -> dict | None:
+    """เหลือแค่ตัวชี้ของ `identity/v1 $defs.Principal` — ตัด `display_name` ทิ้ง
+
+    🔒 ชื่อคนเป็น **เนื้อหา** ไม่ใช่ตัวชี้ (ADR-0011) · `display_name` เป็น optional
+       ใน identity/v1 (required มีแค่ type กับ id) การไม่ใส่จึงยัง conform
+       และ id ชี้กลับไปที่ตารางผู้ใช้ได้อยู่แล้วสำหรับคนที่มีสิทธิ์อ่านตารางนั้น
+
+    เจอเพราะเอากฎสามบรรทัดของร่าง RFC (agent-platform · dis-65134078 seq 28) มาลอง
+    กับ payload จริง — `actor.display_name` ติดมา **ทุกใบ** 112 จาก 112
+    """
+    if not isinstance(principal, dict):
+        return principal
+    kept = {k: v for k, v in principal.items() if k != "display_name"}
+    if isinstance(kept.get("on_behalf_of"), dict):
+        kept["on_behalf_of"] = actor_ref(kept["on_behalf_of"])
+    return kept
+
+
 def make_error(
     code: str, category: str, message: str, *, retryable: bool, **extra: Any
 ) -> dict:
@@ -163,6 +181,11 @@ async def emit(
     if found := attribute_problems(attrs):
         raise EventRejected("attributes ไม่ผ่านชุดที่ประกาศไว้ — " + " · ".join(found))
 
+    # หลักฐานก็ชี้เหมือนกัน — `evidence.recorded_by` เป็น Principal ตัวเดียวกับ actor
+    # บังคับที่นี่ที่เดียว เพราะโดเมนเรียก `as_dict()` กันเจ็ดที่และลืมที่เดียวก็รั่วแล้ว
+    if isinstance(evidence, dict) and isinstance(evidence.get("recorded_by"), dict):
+        evidence = {**evidence, "recorded_by": actor_ref(evidence["recorded_by"])}
+
     event = ApAuditEvent(
         event_id=new_id("evt"),
         sequence=next(_sequence),
@@ -176,7 +199,7 @@ async def emit(
         execution_id=execution_id,
         agent_id=agent_id,
         correlation_id=scope.correlation_id,
-        actor=scope.principal.as_dict(),
+        actor=actor_ref(scope.principal.as_dict()),
         occurred_at=now(),
         source_kind=source_kind,
         source_system=source_system,

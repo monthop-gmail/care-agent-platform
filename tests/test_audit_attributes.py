@@ -12,6 +12,7 @@ import pathlib
 
 import pytest
 from core.clock import FakeClock
+from core.tenancy import Principal
 
 from care_addons.ap_audit import services as audit
 from care_addons.ap_audit.attributes import DECLARED
@@ -183,3 +184,38 @@ async def test_medication_audit_does_not_hold_the_drug_name(session, tenant):
         assert proposed
         assert "Donepezil" not in str(proposed[0].attributes)
         assert proposed[0].subject_id == version.version_id
+
+
+async def test_audit_actor_is_a_pointer_not_a_name(session, tenant):
+    """ชื่อคนไม่ได้อยู่ใน audit — `actor` เหลือแค่ type กับ id
+
+    เจอเพราะเอากฎสามบรรทัดของร่าง RFC มาลองกับ payload จริง แล้วพบว่า
+    `actor.display_name` ติดมาทุกใบ 112 จาก 112 · `display_name` เป็น optional
+    ใน `identity/v1` (required มีแค่ type/id) การไม่ใส่จึงยัง conform
+    """
+    with FakeClock("2026-08-19T01:00:00+00:00"):
+        patient, _ = await setup_patient(session, tenant)
+        version = await meds.propose_version(
+            session,
+            scope_for(tenant),
+            patient_id=patient.patient_id,
+            name="Donepezil 10mg",
+            schedule=[{"time": "20:00", "relation_to_meal": "after_meal", "dose": "1 เม็ด"}],
+            instruction_source="doctor_instruction",
+            prescribed_by={"doctor_name": "หมอ A", "specialty": "neurology"},
+        )
+        await meds.confirm_version(
+            session,
+            scope_for(tenant),
+            version.version_id,
+            confirmed_by=Principal(type="human", id="user-1", display_name="ลูกสาว"),
+        )
+        await session.commit()
+
+        events = await audit_events(session, tenant, patient.patient_id)
+        assert events
+        for e in events:
+            assert set(e.actor) == {"type", "id"}, e.actor
+            assert "ลูกสาว" not in str(e.actor)
+            if e.evidence and "recorded_by" in e.evidence:
+                assert set(e.evidence["recorded_by"]) == {"type", "id"}

@@ -52,6 +52,9 @@ conformance:
         + ใบอนุมัติที่เกิดจากคนกดจริงใน scenario)
         · ตรวจ `attributes` ของทุก event กับชุดปิดที่ประกาศไว้ (ADR-0011) — `event/v1`
         เปิด `metadata` ไว้ทั้งหมด schema จึงฟ้องแทนไม่ได้ ข้อจำกัดนี้เป็นของ repo นี้เอง
+        · และไล่ **ทุก leaf** ของ payload จริงว่ามีอันไหน "ไม่ใช่ตัวชี้" นอกรายการที่
+        ประกาศไว้หรือไม่ (ratchet) — ตัวนี้จับ `actor.display_name` ที่ติดมาทุกใบได้
+        ซึ่งเป็นฟิลด์ของ contract เอง ไม่ใช่ของที่โดเมนใส่ จึงไม่มีตัวตรวจไหนเดิมมองเห็น
     - name: migration_check
       command: CONFORMANCE_ALLOW_DESTRUCTIVE=1 python conformance/migration_check.py
       scope: schema ที่สร้างจาก migration ล้วน ๆ ตรงกับ models — แก้ models แล้วลืม revision = CI แดง
