@@ -31,8 +31,13 @@ class AgentProfile:
     def __init__(self, config: dict) -> None:
         self.profile_id: str = config.get("profile_id", "unknown")
         tools = config.get("tools") or {}
-        # 🔒 allow ว่าง = ไม่อนุญาต tool ใดเลย ไม่ใช่ "อนุญาตทั้งหมด" (profile/v1)
-        self.allow: list[str] = list(tools.get("allow") or [])
+        # 🔒 "ไม่มี allow" กับ "allow: []" เป็นคนละความหมาย ไม่ใช่สองวิธีเขียนสิ่งเดียวกัน
+        #    (profile/v1 v1.1.0 · ADR-0026) — ไม่มี field เลย = ไม่มีเพดานเชิงชื่อ
+        #    เพดานมาจาก capability กับ authority_map · allow: [] = ไม่อนุญาต tool ใดเลย
+        #
+        #    เดิมเรายุบสองอันนี้เป็นค่าเดียวด้วย `or []` ซึ่งแปลว่า profile ที่ไม่มี
+        #    tools เลยจะกลายเป็น deny-all เงียบ ๆ — จำกัดเกินและไม่ตรงกับสัญญา
+        self.allow: list[str] | None = list(tools["allow"]) if "allow" in tools else None
         self.deny: list[str] = list(tools.get("deny") or [])
         policy = config.get("policy") or {}
         self.authority_map: dict = policy.get("authority_map") or {}
@@ -52,7 +57,14 @@ class AgentProfile:
         return self._matches(self.deny, capability)
 
     def allows(self, capability: str) -> bool:
+        if self.allow is None:
+            return True          # ไม่มีเพดานเชิงชื่อ — ไม่ใช่ "ห้ามทุกอย่าง"
         return self._matches(self.allow, capability)
+
+    @property
+    def has_name_ceiling(self) -> bool:
+        """profile นี้ตั้งเพดานด้วย *ชื่อ* หรือไม่ — ใช้ตัดสินว่าต้องตรวจ namespace ไหม"""
+        return self.allow is not None
 
     def requires_human(self, capability: str) -> bool:
         return self._matches(self.require_human_for, capability)

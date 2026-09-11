@@ -5,8 +5,8 @@
 
 repo: monthop-gmail/agent-platform
 ref: main
-commit: 6e97e0854f59426f62dfb873b91b6524da62e4b2
-pinned_at: "2026-08-22"
+commit: 943d496b
+pinned_at: "2026-09-11"
 
 # $ref ที่ contract ของเราอ้างไปที่ agent-platform ได้ — ทุกตัวต้องมีจริงที่ commit ข้างบน
 # เพิ่มรายการใหม่ = ต้องรัน drift_check แบบ --online ให้ผ่านก่อน commit

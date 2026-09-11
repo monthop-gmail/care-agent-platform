@@ -71,7 +71,10 @@ conformance:
         เมื่อถาม `evaluate()` ไม่ใช่ไฟล์ที่วางอยู่เฉย ๆ — ทุกชื่อใน `tools.allow` เป็น capability
         ที่ประกาศไว้จริง · `tools.deny` ปฏิเสธ agent ได้จริงเมื่อถาม `evaluate()`
         · allow เป็นชุดปิด · action ที่ต้องมีคนสั่งไม่หลุดให้ agent · เพดานไม่กินคน
-        · undoes ไม่ผิดทิศ (ADR-0029) · 🔒 อ่านอย่างเดียว รันกับ deployment จริงได้
+        · undoes ไม่ผิดทิศ (ADR-0029) · เพดานเชิงชื่ออยู่ใน namespace เดียวกับระบบนี้จริง
+        (profile/v1 v1.1.0 · ADR-0026 — `load_policy()` reject การผูกตั้งแต่ boot ถ้าไม่ตรง
+        และ "ไม่มี allow" กับ "allow: []" เป็นคนละความหมาย)
+        · 🔒 อ่านอย่างเดียว รันกับ deployment จริงได้
     - name: rls_check
       command: CONFORMANCE_ALLOW_DESTRUCTIVE=1 python conformance/rls_check.py
       scope: >-

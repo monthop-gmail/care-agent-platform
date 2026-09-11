@@ -114,9 +114,30 @@ def undo_violations(policy: Policy) -> list[str]:
 @lru_cache(maxsize=8)
 def load_policy(path: str | None = None) -> Policy:
     policy = Policy(_load_yaml(Path(path) if path else DEFAULT_POLICY_PATH))
+
+    # ตรวจความสอดคล้องภายในไฟล์ policy ก่อน แล้วค่อยตรวจการผูกกับ profile
+    # (ไฟล์ที่ผิดในตัวเองต้องรายงานเป็นความผิดของไฟล์นั้น ไม่ใช่ของ profile ที่บังเอิญผูกอยู่)
     problems = undo_violations(policy)
     if problems:
         raise PolicyConfigError(" · ".join(problems))
+
+    # 🔒 เพดานเชิงชื่อผูกกับ namespace ที่มันตั้งชื่อ (profile/v1 v1.1.0 · ADR-0026)
+    #    allow ที่ไม่ตรงกับ capability ของ policy นี้เลยสักตัว = profile ถูกใช้ผิดที่
+    #    ต้อง **reject การผูก** ไม่ใช่ปล่อยให้กลายเป็น deny-all เงียบ ๆ ซึ่งดูเหมือน
+    #    ระบบที่ปลอดภัยมาก ทั้งที่จริงคือ agent ทำงานไม่ได้เลยและไม่มีใครรู้ว่าทำไม
+    from care_addons.ap_policy.profile import load_profile
+
+    profile = load_profile()
+    if (
+        profile.has_name_ceiling
+        and policy.capabilities
+        and not any(profile.allows(name) for name in policy.capabilities)
+    ):
+        raise PolicyConfigError(
+            f"profile '{profile.profile_id}' tools.allow ไม่ตรงกับ capability ของ policy "
+            f"'{policy.policy_id}' เลยสักตัว — profile ถูกใช้ผิด namespace · "
+            f"ปฏิเสธการผูกตั้งแต่ boot (profile/v1 v1.1.0)"
+        )
     return policy
 
 
@@ -142,6 +163,7 @@ class Policy:
         from care_addons.ap_policy.profile import load_profile
 
         profile = load_profile()
+
         for risk, ceiling in profile.authority_map.items():
             configured = self.authority_map.get(risk)
             if configured and _rank(configured, AUTHORITY_ORDER) < _rank(ceiling, AUTHORITY_ORDER):
