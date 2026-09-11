@@ -77,11 +77,17 @@ LIFT = ("patient_id",)
 # ซึ่งเป็นชื่อคนในที่ที่ลบไม่ได้ และไม่มีใครเห็นเพราะมันเป็นฟิลด์ของ contract เอง
 # ไม่ใช่ของที่โดเมนใส่ · ตัวนับนี้จึงเป็น ratchet: leaf ใหม่ที่ไม่ใช่ตัวชี้ = CI แดง
 #
-# 🔒 สองตัวที่อยู่ในรายการนี้ยังรอกฎที่ต้นทาง ไม่ใช่ของที่ผ่านเพราะเรายอมรับมัน
-EXPECTED_TEXT_LEAVES = {
-    "$.transition.reason",     # event/v1 นิยามเอง · ไม่มีข้อจำกัดในสัญญา (gaps ในใบ manifest)
-    "$.metadata.policy_reason",  # ข้อยกเว้นเดียวของ ADR-0011 · ap_policy สร้างประโยคเอง
-}
+# 🔒 รายการนี้ไม่ได้อยู่ในไฟล์นี้ — อ่านจาก `text_fields` ใน platform-contract.yaml
+#    ซึ่งเป็นใบที่ผู้ตรวจภายนอกอ่าน · ประกาศกับตัวตรวจจึง drift จากกันไม่ได้
+MANIFEST = ROOT / "platform-contract.yaml"
+
+
+def expected_text_leaves() -> set[str]:
+    import yaml
+
+    manifest = yaml.safe_load(MANIFEST.read_text())
+    return {entry["path"] for entry in manifest.get("text_fields") or []}
+
 
 _LEAF_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@+/-]{0,127}$")
 _LEAF_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}([T ].*)?$|^\d{2}:\d{2}$")
@@ -581,10 +587,12 @@ def main() -> int:
     leaves: dict[str, int] = {}
     for event in events:
         text_leaves(as_platform_event(event, lift=LIFT), found=leaves)
-    for path in sorted(set(leaves) - EXPECTED_TEXT_LEAVES):
+    declared = expected_text_leaves()
+    for path in sorted(set(leaves) - declared):
         failures.append(
-            f"text leaf · {path}: {leaves[path]} ใบ — leaf ที่ไม่ใช่ตัวชี้และไม่ได้อยู่ใน "
-            f"EXPECTED_TEXT_LEAVES · ถ้าเป็นเนื้อหา ให้เก็บบน row ของโดเมนแล้วชี้ด้วย id"
+            f"text leaf · {path}: {leaves[path]} ใบ — leaf ที่ไม่ใช่ตัวชี้และไม่ได้ประกาศ "
+            f"ใน platform-contract.yaml `text_fields` · ถ้าเป็นเนื้อหา ให้เก็บบน row "
+            f"ของโดเมนแล้วชี้ด้วย id · ถ้าเป็นข้อความที่ถือได้ ให้ประกาศพร้อมชั้นของการลบ"
         )
 
     careplan_validator = build_validator(schemas, local_schema("careplan", "v1", "careplan.schema.yaml"))

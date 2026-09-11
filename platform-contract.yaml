@@ -107,6 +107,54 @@ extensions:
       ที่ต้องคง `source` ไว้ตลอดไปตาม event/v1
 
 # ช่องว่างที่เจอจากการ implement จริง
+# ── ฟิลด์ที่ถือข้อความของมนุษย์ได้ ────────────────────────────────────────────
+#
+# ประกาศตามกฎข้อ 1 ของ invariant ในร่าง RFC ของ agent-platform (dis-65134078)
+# ทุก leaf ของ payload ที่ไม่อยู่ในรายการนี้ต้องเป็นตัวชี้ — id · รหัส · enum
+# · ตัวเลข · เวลา · boolean
+#
+# 🔒 `conformance/payload_check.py` อ่านรายการนี้ไปใช้เป็น ratchet โดยตรง
+#    ประกาศกับตัวตรวจจึง drift จากกันไม่ได้ · leaf ใหม่ที่ไม่ใช่ตัวชี้ = CI แดง
+text_fields:
+  - path: $.transition.reason
+    written_by: human_or_system
+    detail: >-
+      ส่วนใหญ่เป็นประโยคที่โค้ดเราสร้างเอง แต่เส้นทางเดียวที่เป็นข้อความที่ **คนพิมพ์**
+      คือ `careplan.set_status(reason=...)` — เหตุผลที่ผู้ดูแลหยุดคำสั่งของหมอ
+      ซึ่ง ADR-0006 บังคับว่าต้องตอบได้ และ `care_careplan_task` ไม่ได้เก็บไว้บนแถว
+      จึงเป็นที่เดียวที่มันอยู่ได้
+    retention_layer: >-
+      ลบราย field ไม่ได้ — audit เป็น append-only ตาม frozen guarantee ของ `event/v1`
+      · การลบที่ทำได้อยู่ที่ชั้น store/tenant เท่านั้น และ **ยังไม่มีกลไกนั้นในระบบวันนี้**
+      (`architecture/patient-lifecycle.md` §5 ระบุว่าต้องมี ADR แยกก่อนถึง M6 — ยังไม่มี)
+      · ประกาศไว้แบบนี้เพราะกฎข้อ 3 ขอให้บอกว่ากติกาอยู่ชั้นไหน ไม่ได้ขอให้ลบได้
+  - path: $.metadata.policy_reason
+    written_by: system
+    detail: >-
+      ประโยคที่ `ap_policy` สร้างเองจาก `authority_map` + profile · ไม่มีค่าที่ผู้ใช้พิมพ์
+      และไม่มีค่าจาก record ของ subject · เป็นข้อยกเว้นเดียวของ ADR-0011 และจงใจไม่ใช้
+      ชื่อ `reason` เพราะชื่อที่กว้างพอจะรับอะไรก็ได้จะถูกใช้รับอะไรก็ได้จริง
+    retention_layer: เหมือน `$.transition.reason` — append-only ลบราย field ไม่ได้
+
+# ── จุด cutover ────────────────────────────────────────────────────────────────
+#
+# ประกาศตามที่ repo นี้เสนอเองใน dis-65134078 seq 29 และร่าง v2 รับไป — conformance
+# ของ audit ที่ append-only วัดเป็นเปอร์เซ็นต์ไม่ได้ เพราะใบที่เขียนไปแล้วแก้ไม่ได้
+# สิ่งที่วัดได้คือ "ตั้งแต่เวอร์ชันไหนที่ไม่มีใบใหม่ละเมิดอีก" กับ "ใบก่อนหน้าค้างอะไรไว้"
+cutover:
+  audit_holds_pointers_not_content:
+    since: 45ab6a7          # ADR-0011 — attributes เป็นชุดปิด
+    also: [4ea6d1e, ef11ccf]  # error.details + error.message · actor.display_name
+    still_in_older_events: >-
+      ใบที่เขียนก่อน `45ab6a7` ยังมีชื่อยาคู่ `patient_id` · ข้อความเตือนที่ส่งให้ผู้ป่วย
+      ทั้งประโยค · summary/reason ที่คนพิมพ์ · แผนกที่ไปตรวจ
+      · และใบที่เขียนก่อน `ef11ccf` ยังมี `actor.display_name` คือ **ชื่อคน ทุกใบ**
+      ตั้งแต่ใบแรกของระบบ
+    remediation: >-
+      ไม่มี — ลบไม่ได้เพราะ append-only · นี่คือราคาที่จ่ายไปแล้วของการเปิดช่องไว้
+      ตั้งแต่แรก (ADR-0011 Consequences) และเป็นเหตุผลที่ข้อจำกัดแบบนี้ต้องมาก่อน
+      มี production data ไม่ใช่หลัง
+
 gaps:
   - id: no-rule-for-which-field-may-hold-human-text
     detail: >-
