@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 import pathlib
+import re
 import sys
 import urllib.request
 from datetime import timedelta
@@ -65,6 +66,39 @@ SCHEMA_FILES = [
 
 # attribute ของโดเมนที่ care-event.schema.yaml บังคับให้อยู่ระดับบนสุด
 LIFT = ("patient_id",)
+
+
+# ── leaf ที่ "ไม่ใช่ตัวชี้" ในทุก payload ที่ระบบผลิต ────────────────────────────
+#
+# มาจากร่าง RFC ของ agent-platform (`dis-65134078` seq 28) ที่ขอ invariant ว่า
+# ฟิลด์ที่ถือข้อความของมนุษย์ได้ต้องประกาศไว้ในสัญญา ที่เหลือเป็นตัวชี้
+#
+# เราเอากฎนั้นมารันกับ payload จริงแล้วพบ `actor.display_name` ติดมา **ทุกใบ**
+# ซึ่งเป็นชื่อคนในที่ที่ลบไม่ได้ และไม่มีใครเห็นเพราะมันเป็นฟิลด์ของ contract เอง
+# ไม่ใช่ของที่โดเมนใส่ · ตัวนับนี้จึงเป็น ratchet: leaf ใหม่ที่ไม่ใช่ตัวชี้ = CI แดง
+#
+# 🔒 สองตัวที่อยู่ในรายการนี้ยังรอกฎที่ต้นทาง ไม่ใช่ของที่ผ่านเพราะเรายอมรับมัน
+EXPECTED_TEXT_LEAVES = {
+    "$.transition.reason",     # event/v1 นิยามเอง · ไม่มีข้อจำกัดในสัญญา (gaps ในใบ manifest)
+    "$.metadata.policy_reason",  # ข้อยกเว้นเดียวของ ADR-0011 · ap_policy สร้างประโยคเอง
+}
+
+_LEAF_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@+/-]{0,127}$")
+_LEAF_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}([T ].*)?$|^\d{2}:\d{2}$")
+
+
+def text_leaves(node, path="$", found=None) -> dict[str, int]:
+    """ไล่ทุก leaf แล้วนับอันที่ไม่ใช่ id/รหัส/ตัวเลข/เวลา/boolean"""
+    found = {} if found is None else found
+    if isinstance(node, dict):
+        for key, value in node.items():
+            text_leaves(value, f"{path}.{key}", found)
+    elif isinstance(node, list):
+        for value in node:
+            text_leaves(value, f"{path}[]", found)
+    elif isinstance(node, str) and not (_LEAF_TOKEN.match(node) or _LEAF_TIME.match(node)):
+        found[path] = found.get(path, 0) + 1
+    return found
 
 
 def load_pinned() -> dict:
@@ -543,6 +577,15 @@ def main() -> int:
                 f"approval/v1 · {row.decision} ({row.approval_id}): "
                 f"{error.json_path} — {error.message}"
             )
+
+    leaves: dict[str, int] = {}
+    for event in events:
+        text_leaves(as_platform_event(event, lift=LIFT), found=leaves)
+    for path in sorted(set(leaves) - EXPECTED_TEXT_LEAVES):
+        failures.append(
+            f"text leaf · {path}: {leaves[path]} ใบ — leaf ที่ไม่ใช่ตัวชี้และไม่ได้อยู่ใน "
+            f"EXPECTED_TEXT_LEAVES · ถ้าเป็นเนื้อหา ให้เก็บบน row ของโดเมนแล้วชี้ด้วย id"
+        )
 
     careplan_validator = build_validator(schemas, local_schema("careplan", "v1", "careplan.schema.yaml"))
     for task in plan_tasks:
