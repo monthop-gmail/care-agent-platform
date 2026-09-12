@@ -213,7 +213,7 @@ async def end_membership(
         subject_id=membership.membership_id,
         severity="medium",
         evidence={"kind": "caregiver_confirmed", "recorded_by": scope.principal.as_dict()},
-        transition={"from": "active", "to": "ended", "reason": membership.ended_reason},
+        transition={"from": "active", "to": "ended", "reason": "สิ้นสุดสมาชิกภาพ"},
         attributes={
             "record_type": "org_membership",
             "organization_id": membership.organization_id,

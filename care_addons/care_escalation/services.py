@@ -763,7 +763,6 @@ async def cancel_jobs(
     *,
     source_kind: str,
     source_id: str,
-    reason: str,
 ) -> list[CareJob]:
     """ยกเลิกงานที่ยังเปิดอยู่ของแหล่งนี้ — ใช้เมื่อคำสั่งต้นทางถูกหยุด
 
@@ -785,7 +784,11 @@ async def cancel_jobs(
     cancelled = []
     for job in result.scalars():
         job.next_attempt_at = None
-        await _transition(session, scope, job, "cancelled", reason)
+        # 🔒 ไม่รับข้อความจากผู้เรียกอีกแล้ว — ประโยคของคนอยู่บนแถวของต้นทาง (ADR-0012)
+        #    ใบนี้บอกแค่ว่าถูกยกเลิกเพราะต้นทางไหน ซึ่งผู้อ่านตามต่อได้ด้วย source_id
+        await _transition(
+            session, scope, job, "cancelled", f"ต้นทาง {source_kind} {source_id} ถูกหยุด"
+        )
         await _settle(session, scope, job, settled_as="cancelled")
         cancelled.append(job)
     return cancelled

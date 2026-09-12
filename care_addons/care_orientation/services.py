@@ -258,7 +258,8 @@ async def what_happens_on(
         subject_id=patient_id,
         care_event_type="care.orientation.delivered",
         severity="low",
-        transition={"from": None, "to": "delivered", "reason": f"plan question: {expression}"},
+        transition={"from": None, "to": "delivered", # 🔒 คำถามที่ **ผู้ป่วยพิมพ์เอง** เคยอยู่ตรงนี้ทั้งประโยค (ADR-0012)
+            "reason": "ตอบคำถามเรื่องแผนของวัน"},
         attributes={
             "record_type": "orientation",
             "patient_id": patient_id,

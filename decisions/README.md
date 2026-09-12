@@ -16,6 +16,7 @@
 | [0009](0009-approval-waits-forever.md) | คำขออนุมัติรอได้ตลอดกาล — เวลาไม่เคยอนุมัติอะไรให้ | Accepted |
 | [0010](0010-organizations-are-not-tenants.md) | องค์กรภายนอกไม่ใช่ tenant — เข้าถึงผ่าน consent ที่ให้บุคคล | Accepted |
 | [0011](0011-audit-holds-pointers-not-content.md) | audit เก็บตัวชี้ ไม่ใช่เนื้อหา — `attributes` เป็นชุดปิด | Accepted |
+| [0012](0012-erasure-cuts-the-bridge-not-the-trail.md) | สิทธิขอลบข้อมูล — erasure ตัดสะพานไปหาตัวตน ไม่ใช่ลบ trail | Accepted |
 
 ## กติกา
 

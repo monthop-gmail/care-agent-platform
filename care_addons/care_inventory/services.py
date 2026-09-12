@@ -242,6 +242,7 @@ async def close_item(
 
     previous = item.status
     item.status = status
+    item.close_reason = reason or None     # ประโยคของคนอยู่บนแถว (ADR-0012)
     item.closed_at = now()
     await session.flush()
 
@@ -254,7 +255,7 @@ async def close_item(
         care_event_type="care.inventory.changed",
         severity="low",
         evidence={"kind": "caregiver_confirmed", "recorded_by": scope.principal.as_dict()},
-        transition={"from": previous, "to": status, "reason": reason or status},
+        transition={"from": previous, "to": status, "reason": f"ปิดรายการเป็น '{status}'"},
         attributes={
             "record_type": "inventory_item",
             "patient_id": item.patient_id,
