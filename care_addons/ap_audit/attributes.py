@@ -139,6 +139,8 @@ DECLARED: dict[str, tuple[str, str]] = {
     "appointments": (COUNT, "จำนวนนัดของวันนั้น"),
     "medications": (COUNT, "จำนวนรายการยาของวันนั้น"),
     "version_count": (COUNT, "จำนวน version ที่ขัดกัน"),
+    "erased_rows": (COUNT, "จำนวนแถวที่ถูกลบตามคำขอใช้สิทธิ์ (ADR-0012)"),
+    "erased_tables": (COUNT, "จำนวนตารางที่มีแถวถูกลบ"),
     "confidence": (NUMBER, "ความมั่นใจของสัญญาณจากอุปกรณ์"),
 
     # ── เวลา ──

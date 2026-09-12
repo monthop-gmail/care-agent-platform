@@ -51,6 +51,9 @@ $defs:
       - care.deviation.detected
       - care.escalated
       - care.summary.sent
+      # 🔒 เจ้าของข้อมูลใช้สิทธิ์ขอให้ลบ (ADR-0012) — ไม่ใช่ care.consent.*
+      #    เพราะ erasure กับการถอนความยินยอมเป็นการกระทำคนละอย่าง (dec-d1302f96 ข้อ 3)
+      - care.patient.erased
 
   Severity:
     description: >-

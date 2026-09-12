@@ -136,8 +136,11 @@ text_fields:
       · กติกาการลบอยู่ที่ **แถวของโดเมน** ไม่ใช่ที่ event: ADR-0012 เลือกทางเลือก A
       (pseudonymization) ตาม `dec-d1302f96` — erasure ลบแถวที่แปลง `patient_id` เป็นคน
       trail จึงยังตอบได้ว่าเกิดอะไรขึ้น แต่ตอบไม่ได้ว่าของใคร
-      · ⏳ ตัวกลไก `erase_patient()` ยังไม่ได้ implement — ADR-0012 ตัดสินรูปและปิดเงื่อนไข
-      ที่ทำให้รูปนั้นมีความหมายแล้ว งานที่เหลือคือตัวกลไก
+      · ✅ กลไก `care_patient.erasure.erase_patient()` ทำแล้ว — ลบทุกตารางที่ถือ
+      `patient_id` (ค้นจาก mapper จริง ไม่ใช่ทะเบียนที่คนต้องมาเติม) + ใบยินยอมของผู้ป่วยราย
+      นั้น · ต้องเป็นคนสั่งเสมอ (`patient.data.erase` `action_risk: critical` และอยู่ใน
+      `tools.deny` ของ profile) · ไม่แตะ `ap_audit_event` และไม่ถูกบันทึกเป็น
+      `CONSENT_REVOKED` เด็ดขาด (dec-d1302f96 เงื่อนไขข้อ 3)
   - path: $.metadata.policy_reason
     written_by: system
     detail: >-

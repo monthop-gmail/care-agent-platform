@@ -48,6 +48,9 @@ capabilities:
   # 🔒 การทำให้คำสั่งของหมอ "มีผลจริง" = ผู้ป่วยจะถูกเตือนให้ลงมือทำตามนั้นทุกวัน
   #    จึงเป็น high → approval_required · ไม่ถึง critical เพราะไม่ใช่การเขียนใบยา
   careplan.task.activate:       { action_risk: high }
+  # 🔒 ลบข้อมูลของคนตามคำขอใช้สิทธิ์ — critical เพราะย้อนกลับไม่ได้และไม่มี undo
+  #    ไม่ประกาศ `undoes` กับอะไรทั้งนั้น (ADR-0029 กฎ 1a — การยกเลิกต้องคืนสภาพเดิมได้)
+  patient.data.erase:           { action_risk: critical }
   activity.step.record:         { action_risk: medium }
   inventory.item.write:         { action_risk: medium }
   home.item.write:              { action_risk: medium }   # สถานะของใช้ประจำตัว
