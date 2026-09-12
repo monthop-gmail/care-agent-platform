@@ -221,6 +221,7 @@ async def run_scenario() -> tuple[list, list, list]:
     from care_addons.care_organization import services as orgs
     from care_addons.care_organization.models import CareOrganization, CareOrgMembership
     from care_addons.care_orientation import services as orientation
+    from care_addons.care_patient import erasure
     from care_addons.care_patient import services as patients
     from care_addons.care_routine import services as routines
     from care_addons.care_safety import services as safety
@@ -448,6 +449,19 @@ async def run_scenario() -> tuple[list, list, list]:
         async with get_sessionmaker()() as session:
             await bind_tenant(session, tenant_id)
             await orchestrator.run_cycle(session, system)
+            await session.commit()
+
+        # ใช้สิทธิ์ขอลบข้อมูล — ใช้ผู้ป่วยอีกรายที่สร้างเพื่อการนี้โดยเฉพาะ
+        # payload ของ `care.patient.erased` ต้อง validate ได้เหมือน event อื่น (ADR-0012)
+        async with get_sessionmaker()() as session:
+            await bind_tenant(session, tenant_id)
+            leaving = await patients.create_patient(
+                session, admin, display_name="ผู้ใช้สิทธิ์ขอลบข้อมูล", timezone="Asia/Bangkok"
+            )
+            await session.commit()
+            await erasure.erase_patient(
+                session, admin, leaving.patient_id, request_ref="PDPA-2026-0001"
+            )
             await session.commit()
 
         async with get_sessionmaker()() as session:

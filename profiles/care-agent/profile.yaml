@@ -53,6 +53,7 @@ tools:
     - medication.regimen.stop
     - careplan.task.activate
     - care.profile.update             # เปิด/ปิดความสามารถของผู้ป่วยเป็นการตัดสินใจของคน
+    - patient.data.erase              # ลบข้อมูลของคน — ไม่มีวันเป็นของ agent (ADR-0012)
     - clinical.export
     # 🔒 agent เพิ่มหมอเข้าองค์กรหรือเปิดสิทธิ์ให้ใครไม่ได้ ต่อให้อ่านเจอในเอกสาร
     - organization.membership.write
