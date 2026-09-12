@@ -259,7 +259,7 @@ async def acknowledge(
         care_event_type="care.safety.acknowledged",
         severity=event.severity,
         evidence={"kind": "caregiver_confirmed", "recorded_by": acknowledged_by.as_dict()},
-        transition={"from": previous, "to": "acknowledged", "reason": note or "ผู้ดูแลรับเรื่อง"},
+        transition={"from": previous, "to": "acknowledged", "reason": "ผู้ดูแลรับเรื่อง"},
         attributes={
             "record_type": "safety_event",
             "patient_id": event.patient_id,
@@ -303,7 +303,7 @@ async def close_event(
         care_event_type="care.safety.acknowledged",
         severity=event.severity,
         evidence={"kind": "caregiver_confirmed", "recorded_by": closed_by.as_dict()},
-        transition={"from": previous, "to": state, "reason": note or state},
+        transition={"from": previous, "to": state, "reason": f"เปลี่ยนสถานะเป็น '{state}'"},
         attributes={
             "record_type": "safety_event",
             "patient_id": event.patient_id,

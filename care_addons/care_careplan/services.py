@@ -287,6 +287,8 @@ async def set_status(
     if previous == status:
         return task
     task.status = status
+    # 🔒 ประโยคของผู้ดูแลอยู่บนแถว ไม่ได้อยู่ใน audit — แถวลบได้ audit ลบไม่ได้ (ADR-0012)
+    task.status_reason = reason.strip()
     await session.flush()
 
     # 🔒 หยุดคำสั่งต้องหยุดสิ่งที่ค้างอยู่ด้วย — งานของวันนี้ถูกสร้างไว้ก่อนแล้ว
@@ -296,10 +298,6 @@ async def set_status(
         scope,
         source_kind=SOURCE_KIND,
         source_id=task.task_id,
-        # 🔒 ไม่ส่งต่อประโยคที่คนพิมพ์ — เดิมเหตุผลของผู้ดูแลถูกก๊อปลง trail ของ *ทุก* job
-        #    ที่ถูกยกเลิก · คนที่อ่าน trail ของ job ได้ไม่จำเป็นต้องอ่านเหตุผลนั้นได้
-        #    ต้นฉบับอยู่ที่ event ของ careplan_task ใบเดียว ซึ่ง task_id ด้านล่างชี้ถึง
-        reason=f"careplan_task {task.task_id} ถูกเปลี่ยนเป็น '{status}'",
     )
 
     await audit.emit(
@@ -311,7 +309,7 @@ async def set_status(
         care_event_type="care.careplan.changed",
         severity="medium",
         evidence={"kind": "caregiver_confirmed", "recorded_by": scope.principal.as_dict()},
-        transition={"from": previous, "to": status, "reason": reason.strip()},
+        transition={"from": previous, "to": status, "reason": f"เปลี่ยนสถานะเป็น '{status}'"},
         attributes={
             "record_type": "careplan_task",
             "patient_id": task.patient_id,

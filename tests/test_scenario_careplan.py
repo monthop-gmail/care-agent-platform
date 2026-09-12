@@ -371,11 +371,18 @@ async def test_pausing_an_instruction_cancels_the_work_already_created_for_today
         assert [e.attributes["settled_as"] for e in settled] == ["cancelled"]
         assert "JOB_COMPLETED" not in [e.event_type for e in trail]
 
-        # 🔒 แต่ประโยคที่ผู้ดูแลพิมพ์ไม่ได้ถูกก๊อปลง trail ของงานที่ถูกยกเลิก (ADR-0011)
-        #    เดิมมันไปโผล่ทุกใบ — คนที่อ่าน trail ของงานได้ ไม่จำเป็นต้องอ่านเหตุผลนั้นได้
-        assert not any("ปวดเข่า" in str(e.attributes or {}) for e in trail)
-        assert not any("ปวดเข่า" in str((e.transition or {}).get("reason", "")) for e in trail)
-
-        # ต้นฉบับยังอยู่ครบที่ event ของคำสั่งเอง ซึ่งเป็นที่เดียวที่มันควรอยู่
+        # 🔒 ประโยคที่ผู้ดูแลพิมพ์ไม่อยู่ใน audit เลยสักใบ (ADR-0011 · ADR-0012)
+        #    เดิมมันไปโผล่ทุกใบที่ถูกยกเลิก แล้วต่อมาเหลือใบเดียวที่ event ของคำสั่ง
+        #    ตอนนี้ไม่เหลือเลย เพราะ audit ลบไม่ได้ — erasure จึงตัดสะพานไม่ได้ถ้ามันยังอยู่
         plan_trail = await audit.query(session, sysscope, subject_id=task.task_id)
-        assert any("ปวดเข่า" in (e.transition or {}).get("reason", "") for e in plan_trail)
+        for event in list(trail) + list(plan_trail):
+            assert "ปวดเข่า" not in str(event.attributes or {})
+            assert "ปวดเข่า" not in (event.transition or {}).get("reason", "")
+
+        # ต้นฉบับอยู่บนแถวของคำสั่ง ซึ่งลบได้ตอนเจ้าของข้อมูลใช้สิทธิ์ขอลบ
+        stopped = await careplan.get_task(session, scope, task.task_id)
+        assert stopped.status_reason == "ปวดเข่า หมอให้พักก่อน"
+
+        # และ trail ของงานที่ถูกยกเลิกยังชี้กลับไปหาต้นทางได้
+        cancelled = [e for e in trail if (e.transition or {}).get("to") == "cancelled"]
+        assert any(task.task_id in (e.transition or {}).get("reason", "") for e in cancelled)

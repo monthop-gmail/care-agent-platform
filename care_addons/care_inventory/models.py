@@ -44,4 +44,6 @@ class CareInventoryItem(Base):
     recorded_by: Mapped[dict] = mapped_column(JSON)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # เหตุผลที่คนพิมพ์ตอนปิดรายการ — อยู่บนแถว ไม่ได้อยู่ใน audit (ADR-0012)
+    close_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -49,6 +49,9 @@ class CareCarePlanTask(Base):
     # null = ทำต่อเนื่องจนกว่าจะทบทวนกันในนัดครั้งหน้า (careplan/v1)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="proposed")
+    # 🔒 เหตุผลที่ **คนพิมพ์** ตอนหยุด/พักคำสั่งของหมอ — อยู่บนแถวเพราะแถวลบได้
+    #    audit เก็บแค่ว่าสถานะเปลี่ยนเป็นอะไร ไม่ได้เก็บประโยคของคน (ADR-0012)
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     severity: Mapped[str] = mapped_column(String(16), default="medium")
 
     activated_by: Mapped[dict | None] = mapped_column(JSON, nullable=True)

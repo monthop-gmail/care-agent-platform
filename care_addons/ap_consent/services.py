@@ -155,7 +155,8 @@ async def revoke_consent(
         event_type="CONSENT_REVOKED",
         subject_type="record",
         subject_id=grant.grant_id,
-        transition={"from": "active", "to": "revoked", "reason": grant.revoked_reason},
+        # 🔒 เหตุผลที่คนพิมพ์อยู่บน ap_consent_grant.revoked_reason ซึ่งลบได้ (ADR-0012)
+        transition={"from": "active", "to": "revoked", "reason": f"เพิกถอนโดย {scope.principal.type}"},
         attributes={
             "record_type": "consent_grant",
             "subject_id": grant.subject_id,
