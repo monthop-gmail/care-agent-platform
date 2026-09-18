@@ -459,8 +459,17 @@ async def run_scenario() -> tuple[list, list, list]:
                 session, admin, display_name="ผู้ใช้สิทธิ์ขอลบข้อมูล", timezone="Asia/Bangkok"
             )
             await session.commit()
-            await erasure.erase_patient(
+            erasure_request = await erasure.request_erasure(
                 session, admin, leaving.patient_id, request_ref="PDPA-2026-0001"
+            )
+            # 🔒 คนที่สองเท่านั้นที่อนุมัติได้ — applier ลบให้ในคำตัดสินเดียวกัน (ADR-0013)
+            await approvals.decide(
+                session,
+                admin,
+                request_id=erasure_request.request_id,
+                decision="APPROVE",
+                reason="ตรวจใบคำขอใช้สิทธิ์แล้ว",
+                authority={"type": "human", "id": "user-2", "display_name": "หัวหน้าทีมดูแล"},
             )
             await session.commit()
 

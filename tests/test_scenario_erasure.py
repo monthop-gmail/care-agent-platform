@@ -44,6 +44,26 @@ async def _patient_with_history(session, tenant, *, name="ยาความด�
     return patient, caregiver
 
 
+SECOND_HUMAN = {"type": "human", "id": "user-2", "display_name": "หัวหน้าทีมดูแล"}
+
+
+async def _erase_with_two_people(session, tenant, patient_id, *, request_ref=REQUEST):
+    """ทางจริงของการลบ — คนหนึ่งยื่น อีกคนอนุมัติ แล้ว applier ถึงจะลบ (ADR-0013)"""
+    from care_addons.ap_approval import services as approvals
+
+    request = await erasure.request_erasure(
+        session, scope_for(tenant), patient_id, request_ref=request_ref
+    )
+    return await approvals.decide(
+        session,
+        scope_for(tenant, principal_id="user-2"),
+        request_id=request.request_id,
+        decision="APPROVE",
+        reason="ตรวจใบคำขอแล้วถูกต้อง",
+        authority=SECOND_HUMAN,
+    )
+
+
 async def _rows_left(session, tenant, patient_id) -> dict[str, int]:
     from core.db import Base
     from sqlalchemy import func, select
@@ -68,12 +88,9 @@ async def test_erasure_deletes_the_bridge_and_leaves_the_trail(session, tenant):
         before = await _rows_left(session, tenant, patient.patient_id)
         assert before, "ต้องมีข้อมูลให้ลบจริง ไม่งั้นเทสนี้ผ่านฟรี"
 
-        result = await erasure.erase_patient(
-            session, scope_for(tenant), patient.patient_id, request_ref=REQUEST
-        )
+        await _erase_with_two_people(session, tenant, patient.patient_id)
         await session.commit()
 
-        assert result["rows"] > 0
         assert await _rows_left(session, tenant, patient.patient_id) == {}
 
         # trail ยังอยู่ — และยังตอบได้ว่าเกิดอะไรขึ้น
@@ -89,7 +106,7 @@ async def test_erasure_deletes_the_bridge_and_leaves_the_trail(session, tenant):
         assert events
         erased = [e for e in events if e.care_event_type == "care.patient.erased"]
         assert len(erased) == 1
-        assert erased[0].attributes["erased_rows"] == result["rows"]
+        assert erased[0].attributes["erased_rows"] > 0
         assert erased[0].attributes["subject_ref"] == REQUEST
 
         # 🔒 แต่ไม่มีใครตามกลับไปหาตัวตนได้ — ชื่อยาและชื่อคนไม่เหลืออยู่ใน trail เลย
@@ -107,9 +124,7 @@ async def test_erasure_is_not_recorded_as_withdrawing_consent(session, tenant):
     """
     with FakeClock("2026-08-19T01:00:00+00:00"):
         patient, _ = await _patient_with_history(session, tenant)
-        await erasure.erase_patient(
-            session, scope_for(tenant), patient.patient_id, request_ref=REQUEST
-        )
+        await _erase_with_two_people(session, tenant, patient.patient_id)
         await session.commit()
 
         from sqlalchemy import select
@@ -128,9 +143,7 @@ async def test_erasure_never_touches_the_other_patient_in_the_house(session, ten
         first, _ = await _patient_with_history(session, tenant)
         second, _ = await _patient_with_history(session, tenant, name="ยาเบาหวาน Metformin")
 
-        await erasure.erase_patient(
-            session, scope_for(tenant), first.patient_id, request_ref=REQUEST
-        )
+        await _erase_with_two_people(session, tenant, first.patient_id)
         await session.commit()
 
         assert await _rows_left(session, tenant, first.patient_id) == {}
@@ -145,7 +158,7 @@ async def test_an_agent_can_never_erase_a_person(session, tenant):
             tenant_id=tenant, principal=Principal(type="agent", id="care-agent")
         )
         with pytest.raises(PolicyDenied):
-            await erasure.erase_patient(
+            await erasure.request_erasure(
                 session, agent_scope, patient.patient_id, request_ref=REQUEST
             )
         await session.rollback()
@@ -159,7 +172,7 @@ async def test_a_service_account_cannot_erase_either(session, tenant):
             tenant_id=tenant, principal=Principal(type="service", id="care-orchestrator")
         )
         with pytest.raises(erasure.ErasureRefused):
-            await erasure.erase_patient(
+            await erasure.request_erasure(
                 session, service_scope, patient.patient_id, request_ref=REQUEST
             )
         await session.rollback()
@@ -171,9 +184,9 @@ async def test_erasure_requires_a_reference_that_is_a_pointer_not_a_sentence(ses
         patient, _ = await _patient_with_history(session, tenant)
         scope = scope_for(tenant)
         with pytest.raises(ValueError):
-            await erasure.erase_patient(session, scope, patient.patient_id, request_ref="")
+            await erasure.request_erasure(session, scope, patient.patient_id, request_ref="")
         with pytest.raises(ValueError):
-            await erasure.erase_patient(
+            await erasure.request_erasure(
                 session,
                 scope,
                 patient.patient_id,
@@ -202,3 +215,90 @@ def test_every_table_that_holds_a_patient_id_is_erased():
     assert not missing, f"ตารางที่ถือ patient_id แต่คำสั่งลบไม่ครอบ: {missing}"
     assert "ap_audit_event" not in covered, "audit เป็น append-only ห้ามลบ"
     assert "ap_consent_grant" in covered, "ใบยินยอมของผู้ป่วยต้องถูกลบ ไม่ใช่ถูกเพิกถอน"
+
+
+async def test_a_pending_request_deletes_nothing(session, tenant):
+    """ยื่นแล้วยังไม่มีใครอนุมัติ = ยังไม่มีอะไรหาย (ADR-0013)
+
+    🔒 ข้อนี้คือเหตุผลที่ route ตอบ 202 ไม่ใช่ 200 — "รับเรื่องแล้ว" ไม่ใช่ "ลบแล้ว"
+    """
+    with FakeClock("2026-08-19T01:00:00+00:00"):
+        patient, _ = await _patient_with_history(session, tenant)
+        request = await erasure.request_erasure(
+            session, scope_for(tenant), patient.patient_id, request_ref=REQUEST
+        )
+        await session.commit()
+
+        assert request.state == "pending"
+        assert await _rows_left(session, tenant, patient.patient_id), "ยังไม่อนุมัติ ต้องยังอยู่ครบ"
+
+
+async def test_the_person_who_asked_cannot_approve_their_own_request(session, tenant):
+    """คนเดียวลบคนทั้งคนไม่ได้ — ต้องมีคนที่สอง (approval/v1 invariant)
+
+    การลบไม่มี undo · คนเดียวที่พลาดหรือถูกกดดัน ทำลายบันทึกของคนหนึ่งคนถาวรได้
+    ซึ่งเป็นรูปความล้มเหลวเดียวกับที่เราไม่ยอมให้ agent ทำ
+    """
+    from care_addons.ap_approval import services as approvals
+
+    with FakeClock("2026-08-19T01:00:00+00:00"):
+        patient, _ = await _patient_with_history(session, tenant)
+        request = await erasure.request_erasure(
+            session, scope_for(tenant), patient.patient_id, request_ref=REQUEST
+        )
+        with pytest.raises(approvals.ApprovalRejected):
+            await approvals.decide(
+                session,
+                scope_for(tenant),
+                request_id=request.request_id,
+                decision="APPROVE",
+                reason="อนุมัติเอง",
+                authority={"type": "human", "id": "user-1"},
+            )
+        await session.rollback()
+
+
+async def test_erasing_without_an_approval_is_refused(session, tenant):
+    """กฎสองคนอยู่ติดกับการลบ ไม่ใช่ติดกับหน้าจอ — เรียกฟังก์ชันตรง ๆ ก็ผ่านไม่ได้"""
+    with FakeClock("2026-08-19T01:00:00+00:00"):
+        patient, _ = await _patient_with_history(session, tenant)
+        with pytest.raises(erasure.ErasureRefused):
+            await erasure.erase_patient(
+                session,
+                scope_for(tenant),
+                patient.patient_id,
+                request_ref=REQUEST,
+                approval_id="apv-ไม่มีจริง",
+            )
+        await session.rollback()
+
+
+async def test_a_rejected_request_deletes_nothing(session, tenant):
+    """ปฏิเสธแล้วต้องไม่มีอะไรหาย และใบต้องไม่กลายเป็นอนุมัติทีหลัง"""
+    from care_addons.ap_approval import services as approvals
+
+    with FakeClock("2026-08-19T01:00:00+00:00"):
+        patient, _ = await _patient_with_history(session, tenant)
+        request = await erasure.request_erasure(
+            session, scope_for(tenant), patient.patient_id, request_ref=REQUEST
+        )
+        approval = await approvals.decide(
+            session,
+            scope_for(tenant, principal_id="user-2"),
+            request_id=request.request_id,
+            decision="REJECT",
+            reason="ใบคำขอยังไม่ครบเอกสาร",
+            authority=SECOND_HUMAN,
+        )
+        await session.commit()
+
+        assert await _rows_left(session, tenant, patient.patient_id), "ถูกปฏิเสธ ต้องยังอยู่ครบ"
+        with pytest.raises(erasure.ErasureRefused):
+            await erasure.erase_patient(
+                session,
+                scope_for(tenant),
+                patient.patient_id,
+                request_ref=REQUEST,
+                approval_id=approval.approval_id,
+            )
+        await session.rollback()
