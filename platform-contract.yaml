@@ -149,6 +149,24 @@ text_fields:
       ชื่อ `reason` เพราะชื่อที่กว้างพอจะรับอะไรก็ได้จะถูกใช้รับอะไรก็ได้จริง
     retention_layer: เหมือน `$.transition.reason` — append-only ลบราย field ไม่ได้
 
+# ── ข้อความจากผู้ผลิตภายนอก (RFC-0015) ───────────────────────────────────────
+#
+# devfactory-core เพิ่ม `external_text` ไว้สำหรับผู้รับที่เก็บ metadata ของผู้ผลิตรายอื่น
+# ทั้งก้อน แล้วประกาศว่า "ของใคร" แทนที่จะประกาศว่า "ถืออะไร"
+#
+# repo นี้ไม่มีรายการในบล็อกนั้น และเหตุผลไม่ใช่ "ไม่มี external event" — เรามี
+# (สัญญาณจากอุปกรณ์ · `source_kind: external` + `source_system`)
+external_text:
+  declaration: not_applicable
+  detail: >-
+    audit ของเราไม่เคยเก็บ metadata ของผู้ผลิตภายนอกเป็น subtree · ทะเบียนคีย์ปิด
+    (ADR-0011) บังคับให้ค่าที่เข้ามาจากข้างนอกถูกลดรูปเป็น token ที่ประกาศไว้ตั้งแต่ intake
+    — `device_event` เป็น `code` ไม่ใช่ก้อน JSON ของผู้ผลิต · ค่าที่ไม่ผ่านรูปนี้ถูก
+    `emit()` ปฏิเสธ ไม่ได้ถูกเก็บไว้แล้วค่อยประกาศทีหลัง
+  verified_by: >-
+    `payload_check` ไล่ leaf ของ event ทั้ง 115 ใบรวม external โดยไม่แยกกรณี —
+    ถ้ามี subtree ของใครหลุดเข้ามา ratchet จะแดงเอง · ข้อนี้จึงตรวจได้ ไม่ใช่คำแถลง
+
 # ── จุด cutover ────────────────────────────────────────────────────────────────
 #
 # ประกาศตามที่ repo นี้เสนอเองใน dis-65134078 seq 29 และร่าง v2 รับไป — conformance
@@ -169,22 +187,30 @@ cutover:
       ตั้งแต่แรก (ADR-0011 Consequences) และเป็นเหตุผลที่ข้อจำกัดแบบนี้ต้องมาก่อน
       มี production data ไม่ใช่หลัง
 
-gaps:
+gaps: []
+
+resolved_gaps:
   - id: no-rule-for-which-field-may-hold-human-text
     detail: >-
       `event/v1` `transition.reason` เป็น `type: string` เปล่า ๆ ไม่มีข้อจำกัดสักบรรทัด
-      และเป็นที่เดียวที่เก็บ "เหตุผลที่คนหยุดคำสั่งของหมอ" ซึ่ง ADR-0006 บังคับว่าต้องตอบได้
-      · กฎที่บอกแค่ "audit ห้ามถือ PII ของ subject" จะทำให้ระบบที่ทำถูกกลายเป็นระบบที่
-      conform ไม่ได้ · สิ่งที่ต้องมีคือกฎว่าฟิลด์ไหนถือข้อความของมนุษย์ได้ และกติกาการเก็บ/ลบ
-      ของฟิลด์นั้น
-      · `metadata` ปิดฝั่งเราแล้ว (ADR-0011) และ `error/v1` `message` มีกฎอยู่แล้วในสัญญา
-      จึงไม่ใช่ของที่รอ RFC — agent-platform ชี้ข้อนี้ที่ dis-65134078 seq 26 และเราตรวจแล้ว
-      (ดู resolved_gaps `raw-channel-error-in-error-message`)
-    tracked_by: >-
-      RFC ที่ agent-platform จะเปิดที่ devfactory-core (ตกลงไว้ที่ dis-65134078 seq 24
-      ว่ารอผลการปิด attributes ของ repo นี้ก่อน) — เขาจะส่งร่างมาให้อ่านก่อนเปิด
-
-resolved_gaps:
+      และเป็นที่เดียวที่เก็บ "เหตุผลที่คนหยุดคำสั่งของหมอ" · กฎที่บอกแค่ "audit ห้ามถือ PII"
+      จะทำให้ระบบที่ทำถูกกลายเป็นระบบที่ conform ไม่ได้ · สิ่งที่ต้องมีคือกฎว่าฟิลด์ไหน
+      ถือข้อความของมนุษย์ได้ และกติกาการเก็บ/ลบของฟิลด์นั้น
+    tracked_by: dis-65134078 seq 24-35 · devfactory-core PR 34
+    resolved_by: >-
+      RFC-0013 merged ที่ devfactory-core (2026-09-17) → `contract-semantics.yaml`
+      `semantics_version` 1.3 · invariant สามข้อ: กฎใช้ที่ระดับ leaf · leaf ที่อาจถือ
+      ข้อความของคนต้องประกาศ ที่เหลือเป็นตัวชี้ · leaf ที่ประกาศแล้วต้องบอกว่ากฎการเก็บ
+      และการลบอยู่ชั้นไหน · repo นี้เป็นผู้ผลิตที่รันกฎกับ payload จริงให้สองรอบก่อนยื่น
+      · ⚠️ ถ้อยคำ clause 2 ที่เราทักไว้ (seq 34) ว่าเขียน "in the contract" ทั้งที่
+      Non-Goals ห้ามชุดคีย์กลาง **ไม่ได้ถูกแก้ก่อน merge** — แต่ reference implementation
+      ของ devfactory-core เองประกาศ `text_fields` ในบล็อกฝั่ง producer ที่อยู่นอก `frozen`
+      และให้ checker อ่านบล็อกนั้น ซึ่งเป็นรูปเดียวกับที่ repo นี้ทำ · การประกาศฝั่ง
+      producer จึงเป็นการอ่านที่ต้นทางใช้เอง และเราไม่ได้ non-conform
+      · ที่ยังค้างเป็นของ agent-platform: `guarantees.rules` ของ `event/v1` ยังไม่ได้
+      เขียน invariant ลงไป และ `transition.reason` ยังไม่ได้ถูกประกาศ (ต้องมี ADR ที่ repo
+      เขา) — ไม่กระทบเรา เพราะ ADR-0012 ทำให้ `transition.reason` ของเราเป็นข้อความที่
+      เครื่องสร้างเองล้วนแล้ว
   - id: raw-channel-error-in-error-message
     detail: >-
       `error/v1` `message` ห้ามมี credential / PII / เนื้อหา prompt อยู่แล้วในสัญญา
