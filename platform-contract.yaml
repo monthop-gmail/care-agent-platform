@@ -199,7 +199,7 @@ gaps:
       · คำขออนุมัติการลบข้อมูลผู้ป่วยจึงใช้ `tool_call` (สิ่งที่อนุมัติคือ *การกระทำ*
       ไม่ใช่ของที่ผลิตออกมา) และ careplan ใช้ `artifact` มาก่อนหน้านี้ด้วยเหตุผลเดียวกัน
       — สองที่ในโดเมนเดียวเลือกคนละค่า เพราะไม่มีค่าที่ถูก
-    tracked_by: ยังไม่ได้เปิดที่ agent-platform — จะรายงานพร้อมหลักฐานจากการใช้จริง
+    tracked_by: https://github.com/monthop-gmail/agent-platform/issues/73
 
 resolved_gaps:
   - id: no-rule-for-which-field-may-hold-human-text
