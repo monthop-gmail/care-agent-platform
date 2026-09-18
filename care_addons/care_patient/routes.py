@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from care_addons.ap_consent.services import ConsentDenied
+from care_addons.care_patient import erasure
 from care_addons.care_patient import services as svc
 
 router = APIRouter(prefix="/api/care/patients", tags=["care: patients"])
@@ -139,3 +140,38 @@ async def assign_team(
     )
     await session.commit()
     return {"patient_id": member.patient_id, "caregiver_id": member.caregiver_id}
+
+
+class ErasureIn(BaseModel):
+    request_ref: str
+
+
+@router.post("/{patient_id}/erasure-requests", status_code=202)
+async def request_erasure(
+    patient_id: str,
+    body: ErasureIn,
+    scope: ScopeDep,
+    session: SessionDep,
+    _: Annotated[Any, Depends(require_permission("care.patient.manage"))],
+) -> dict:
+    """ยื่นคำขอใช้สิทธิ์ลบข้อมูล — **ไม่ลบอะไร** จนกว่าคนที่สองจะอนุมัติ (ADR-0013)
+
+    🔒 ไม่มี endpoint ที่ลบได้ด้วย request เดียวโดยเจตนา · การลบไม่มี undo
+       ผู้ยื่นอนุมัติคำขอของตัวเองไม่ได้ (`ap_approval` บังคับเอง) · 202 ไม่ใช่ 200
+       เพราะสิ่งที่เกิดขึ้นคือ "รับเรื่องแล้ว" ไม่ใช่ "ลบแล้ว"
+    """
+    try:
+        request = await erasure.request_erasure(
+            session, scope, patient_id, request_ref=body.request_ref
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except (ValueError, erasure.ErasureRefused) as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    await session.commit()
+    return {
+        "request_id": request.request_id,
+        "state": request.state,
+        "patient_id": patient_id,
+        "note": "ยังไม่ได้ลบ — รอคนที่ไม่ใช่ผู้ยื่นอนุมัติผ่าน /api/approvals",
+    }
