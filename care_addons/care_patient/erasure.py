@@ -162,11 +162,9 @@ async def request_erasure(
         session,
         scope,
         decision=decision,
-        # ⚠️ `approval/v1` `$.subject.type` เป็นชุดปิดห้าค่า และไม่มีค่าสำหรับ "บันทึกของโดเมน"
-        #    — ช่องว่างรูปเดียวกับที่ `event/v1` เคยมีจนเพิ่ม `record` ให้ (agent-platform#14)
-        #    เราเลือก `tool_call` เพราะสิ่งที่ถูกอนุมัติคือ *การกระทำ* ไม่ใช่ของที่ผลิตออกมา
-        #    บันทึกเป็น gap ในใบ manifest ไม่ได้เงียบ
-        subject_type="tool_call",
+        # `approval/v1` v1.3.0 (semantics 1.4) เพิ่มค่า `record` ให้แล้วหลังเรารายงาน
+        # ที่ agent-platform#73 — คำเดียวกันหมายถึงของเดียวกันทั้ง event/v1 และ approval/v1
+        subject_type="record",
         subject_id=patient_id,
         summary=f"คำขอใช้สิทธิ์ลบข้อมูล {request_ref}",
         requested_by=scope.principal.as_dict(),
@@ -207,6 +205,22 @@ async def erase_patient(
     await _assert_approved_by_a_second_human(session, scope, patient_id, approval_id)
 
     deleted: dict[str, int] = {}
+
+    # 🔒 เก็บ id ของแถวที่กำลังจะหายไว้ก่อน — ใบอนุมัติอ้างถึงแถวเหล่านี้ด้วย subject_id
+    #    ถ้าไม่เก็บ ใบอนุมัติจะชี้ไปที่ของที่ไม่มีแล้ว และยังถือ `reason` ที่คนพิมพ์อยู่
+    #    (เจอตอนตอบข้อ 3 ของกฎ leaf ที่ `approval/v1` เพิ่งเข้าขอบเขต — semantics 1.5)
+    subject_ids: set[str] = {patient_id}
+    for table_name, column in erasable_tables():
+        table = Base.metadata.tables[table_name]
+        keys = [c for c in table.primary_key.columns if c.type.python_type is str]
+        if keys:
+            rows = await session.execute(
+                select(*keys).where(
+                    table.c.tenant_id == scope.tenant_id, table.c[column] == patient_id
+                )
+            )
+            subject_ids.update(str(value) for row in rows for value in row if value)
+
     for table_name, column in erasable_tables():
         table = Base.metadata.tables[table_name]
         result = await session.execute(
@@ -217,6 +231,9 @@ async def erase_patient(
         )
         if result.rowcount:
             deleted[table_name] = result.rowcount
+
+    for table_name, count in (await _delete_approvals_about(session, scope, subject_ids)).items():
+        deleted[table_name] = count
 
     deleted_orphans = await _delete_orphan_caregivers(session, scope)
     if deleted_orphans:
@@ -243,6 +260,50 @@ async def erase_patient(
         },
     )
     return {"patient_id": patient_id, "deleted": deleted, "rows": sum(deleted.values())}
+
+
+
+async def _delete_approvals_about(
+    session: AsyncSession, scope: TenantScope, subject_ids: set[str]
+) -> dict[str, int]:
+    """ใบอนุมัติที่พูดถึงแถวของผู้ป่วยรายนี้ — `reason` กับ `summary` เป็นข้อความที่คนพิมพ์
+
+    `approval/v1` `reason` เป็น `required` + `minLength: 1` ตัดออกไม่ได้ · กฎ leaf ข้อ 3
+    จึงถามว่ากติกาการลบอยู่ชั้นไหน · คำตอบของเราคือ **ชั้นแถวของโดเมน** ซึ่งแปลว่า
+    erasure ต้องลบมันจริง ไม่ใช่แค่เขียนว่าลบได้
+    """
+    if not subject_ids:
+        return {}
+
+    requests = (
+        await session.execute(
+            select(ApApprovalRequest.request_id).where(
+                ApApprovalRequest.tenant_id == scope.tenant_id,
+                ApApprovalRequest.subject_id.in_(subject_ids),
+            )
+        )
+    ).scalars().all()
+    if not requests:
+        return {}
+
+    counts: dict[str, int] = {}
+    approvals_deleted = await session.execute(
+        delete(ApApproval).where(
+            ApApproval.tenant_id == scope.tenant_id,
+            ApApproval.request_id.in_(requests),
+        )
+    )
+    if approvals_deleted.rowcount:
+        counts["ap_approval"] = approvals_deleted.rowcount
+    requests_deleted = await session.execute(
+        delete(ApApprovalRequest).where(
+            ApApprovalRequest.tenant_id == scope.tenant_id,
+            ApApprovalRequest.request_id.in_(requests),
+        )
+    )
+    if requests_deleted.rowcount:
+        counts["ap_approval_request"] = requests_deleted.rowcount
+    return counts
 
 
 async def _delete_orphan_caregivers(session: AsyncSession, scope: TenantScope) -> int:

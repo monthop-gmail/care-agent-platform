@@ -26,7 +26,12 @@ DECISIONS = ["APPROVE", "REJECT", "REQUIRE_CHANGES"]
 REQUEST_STATES = ["pending", "approved", "rejected", "changes_requested", "expired", "withdrawn"]
 
 # ชนิดของ subject ตาม approval/v1 $.subject.type
-SUBJECT_TYPES = ["job", "execution", "tool_call", "artifact", "deployment"]
+# 🔓 ชุดเปิดตั้งแต่ `approval/v1` v1.3.0 (semantics 1.4) — ค่า `record` เพิ่มหลังเรารายงาน
+#    ที่ agent-platform#73 ว่าไม่มีค่าสำหรับบันทึกของโดเมน
+#
+# 🔒 ต่างจาก `event/v1` `SubjectType` ที่ชื่อเหมือนกัน — ของที่นั่น platform เพิ่มเองได้
+#    ของที่นี่เป็น semantics ของ devfactory-core การเพิ่มค่าต้องมี RFC ที่ต้นทาง
+SUBJECT_TYPES = ["job", "execution", "tool_call", "artifact", "deployment", "record"]
 
 
 class ApApprovalRequest(Base):

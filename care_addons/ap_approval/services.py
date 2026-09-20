@@ -408,7 +408,11 @@ def as_approval(row: ApApproval) -> dict:
         "subject": {"type": row.subject_type, "id": row.subject_id},
         "decision": row.decision,
         "reason": row.reason,
-        "authority": {k: v for k, v in (row.authority or {}).items() if v},
+        # 🔒 payload ของ `approval/v1` เป็น "record ตามสัญญา" จึงอยู่ใต้กฎ leaf (semantics 1.5)
+        #    ชื่อคนเป็นเนื้อหา ไม่ใช่ตัวชี้ — ตัดออกเหมือนที่ทำกับ `actor` ใน audit (ADR-0011)
+        #    ตัวชื่ออยู่บนแถว `ap_approval.authority` ซึ่งลบได้ และ `id` ชี้กลับไปหาได้
+        #    เจอเพราะ ratchet ของ payload_check ถูกขยายให้ไล่ payload ใบอนุมัติด้วย
+        "authority": audit.actor_ref({k: v for k, v in (row.authority or {}).items() if v}),
         "decided_at": row.decided_at.isoformat(),
     }
     if row.workspace_id:

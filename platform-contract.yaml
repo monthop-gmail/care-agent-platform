@@ -143,6 +143,21 @@ text_fields:
       นั้น · ต้องเป็นคนสั่งเสมอ (`patient.data.erase` `action_risk: critical` และอยู่ใน
       `tools.deny` ของ profile) · ไม่แตะ `ap_audit_event` และไม่ถูกบันทึกเป็น
       `CONSENT_REVOKED` เด็ดขาด (dec-d1302f96 เงื่อนไขข้อ 3)
+  # ── approval/v1 ── กฎ leaf ผูกใบนี้ตั้งแต่ semantics 1.5 (RFC-0017)
+  # payload ของใบอนุมัติ ไม่ใช่ audit event — `payload_check` ไล่ leaf ของทั้งสองชุด
+  - path: approval/v1 $.reason
+    written_by: human
+    detail: >-
+      เหตุผลที่ผู้มีอำนาจพิมพ์ตอนตัดสิน · `approval/v1` บังคับ `required` + `minLength: 1`
+      จึงตัดออกไม่ได้เลยตลอดอายุของสัญญา — ต่างจาก `transition.reason` ที่ optional
+      และผู้ผลิตเลิกส่งได้ · RFC-0017 ชี้ว่าข้อนี้เป็นเหตุผลให้มีกฎ ไม่ใช่เหตุผลไม่ให้มี
+      เพราะสิ่งเดียวที่เปลี่ยนได้คือคำตอบของข้อ 3
+    retention_layer: >-
+      อยู่บน `ap_approval.reason` ซึ่งเป็นแถวของโดเมน **ลบได้** — ต่างจาก audit
+      · คำตัดสินที่เกี่ยวกับผู้ป่วยรายหนึ่งถูกลบไปกับ `erase_patient()` เมื่อเจ้าของข้อมูล
+      ใช้สิทธิ์ (ADR-0012 · ตาราง `ap_approval` กับ `ap_approval_request` อยู่ในชุดที่ลบ
+      ผ่าน `erasable_tables()`) · ใน audit ไม่มีสำเนาของประโยคนี้ เก็บแค่ `authority_id`
+      กับ `request_id` ที่ชี้กลับมา (ADR-0011)
   - path: $.metadata.policy_reason
     written_by: system
     detail: >-
@@ -189,19 +204,21 @@ cutover:
       ตั้งแต่แรก (ADR-0011 Consequences) และเป็นเหตุผลที่ข้อจำกัดแบบนี้ต้องมาก่อน
       มี production data ไม่ใช่หลัง
 
-gaps:
-  - id: approval-v1-has-no-subject-type-for-a-domain-record
-    detail: >-
-      `approval/v1` `$.subject.type` เป็นชุดปิดห้าค่า (`job` `execution` `tool_call`
-      `artifact` `deployment`) และไม่มีค่าสำหรับ **บันทึกของโดเมน** · เป็นช่องว่างรูปเดียวกับ
-      ที่ `event/v1` เคยมีจนเพิ่ม `record` ให้ (agent-platform#14) เจอคราวนี้ในสัญญาพี่น้อง
-      ของมัน ด้วยวิธีเดียวกันคือลองใช้จริงแล้วไม่มีค่าที่ตรง
-      · คำขออนุมัติการลบข้อมูลผู้ป่วยจึงใช้ `tool_call` (สิ่งที่อนุมัติคือ *การกระทำ*
-      ไม่ใช่ของที่ผลิตออกมา) และ careplan ใช้ `artifact` มาก่อนหน้านี้ด้วยเหตุผลเดียวกัน
-      — สองที่ในโดเมนเดียวเลือกคนละค่า เพราะไม่มีค่าที่ถูก
-    tracked_by: https://github.com/monthop-gmail/agent-platform/issues/73
+gaps: []
 
 resolved_gaps:
+  - id: approval-v1-has-no-subject-type-for-a-domain-record
+    detail: >-
+      `approval/v1` `$.subject.type` เป็นชุดปิดห้าค่าและไม่มีค่าสำหรับบันทึกของโดเมน
+      · repo นี้เลือก `artifact` ให้คำสั่งหมอที่รอมีผล และ `tool_call` ให้คำขอลบข้อมูล
+      — สองที่ในโดเมนเดียวเลือกคนละค่าเพราะไม่มีค่าที่ถูก ทั้งที่ audit event ของวัตถุ
+      เดียวกันใช้ `subject_type: record` อยู่แล้ว
+    tracked_by: https://github.com/monthop-gmail/agent-platform/issues/73
+    resolved_by: >-
+      RFC-0016 (semantics 1.4) → `approval/v1` v1.3.0 — `$.subject.type` เป็น **ชุดเปิด**
+      และได้ค่า `record` ที่ยืมนิยามจาก `event/v1` ทั้งดุ้น · repo นี้ย้ายทั้งสามที่
+      (careplan · medication · erasure) มาใช้ `record` แล้ว ไม่เหลือค่าที่ผิดน้อยที่สุด
+      · คำเดียวกันหมายถึงของเดียวกันทั้งสองสัญญาแล้ว
   - id: no-rule-for-which-field-may-hold-human-text
     detail: >-
       `event/v1` `transition.reason` เป็น `type: string` เปล่า ๆ ไม่มีข้อจำกัดสักบรรทัด
