@@ -607,16 +607,24 @@ def main() -> int:
                 f"{error.json_path} — {error.message}"
             )
 
-    leaves: dict[str, int] = {}
-    for event in events:
-        text_leaves(as_platform_event(event, lift=LIFT), found=leaves)
+    # กฎ leaf ไม่ใช่คุณสมบัติของ `event/v1` — semantics 1.5 (RFC-0017) ผูก `approval/v1`
+    # ด้วย · ratchet จึงไล่ payload ของใบอนุมัติในรอบเดียวกัน ไม่ใช่ตรวจแต่ event
     declared = expected_text_leaves()
-    for path in sorted(set(leaves) - declared):
-        failures.append(
-            f"text leaf · {path}: {leaves[path]} ใบ — leaf ที่ไม่ใช่ตัวชี้และไม่ได้ประกาศ "
-            f"ใน platform-contract.yaml `text_fields` · ถ้าเป็นเนื้อหา ให้เก็บบน row "
-            f"ของโดเมนแล้วชี้ด้วย id · ถ้าเป็นข้อความที่ถือได้ ให้ประกาศพร้อมชั้นของการลบ"
-        )
+    leaf_sets = {
+        "": [as_platform_event(event, lift=LIFT) for event in events],
+        "approval/v1 ": [as_approval(row) for row in approvals_made],
+    }
+    for prefix, payloads in leaf_sets.items():
+        leaves: dict[str, int] = {}
+        for payload in payloads:
+            text_leaves(payload, found=leaves)
+        for path in sorted({prefix + p for p in leaves} - declared):
+            failures.append(
+                f"text leaf · {path}: {leaves[path.removeprefix(prefix)]} ใบ — leaf ที่ไม่ใช่"
+                f"ตัวชี้และไม่ได้ประกาศใน platform-contract.yaml `text_fields` · ถ้าเป็นเนื้อหา "
+                f"ให้เก็บบน row ของโดเมนแล้วชี้ด้วย id · ถ้าเป็นข้อความที่ถือได้ "
+                f"ให้ประกาศพร้อมชั้นของการลบ"
+            )
 
     careplan_validator = build_validator(schemas, local_schema("careplan", "v1", "careplan.schema.yaml"))
     for task in plan_tasks:

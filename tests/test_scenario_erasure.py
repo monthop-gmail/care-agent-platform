@@ -302,3 +302,40 @@ async def test_a_rejected_request_deletes_nothing(session, tenant):
                 approval_id=approval.approval_id,
             )
         await session.rollback()
+
+
+async def test_the_approval_that_authorised_the_erasure_is_erased_too(session, tenant):
+    """ใบอนุมัติถือ `reason` ที่คนพิมพ์ — `approval/v1` บังคับ required + minLength 1
+
+    กฎ leaf ผูก `approval/v1` ตั้งแต่ semantics 1.5 และข้อ 3 ถามว่ากติกาการลบอยู่ชั้นไหน
+    คำตอบของเราคือชั้นแถวของโดเมน ซึ่งแปลว่า erasure ต้องลบมันจริง ไม่ใช่แค่เขียนว่าลบได้
+
+    🔒 รวมถึงใบที่อนุมัติการลบครั้งนี้เอง · หลักฐานว่ามีคนสองคนไม่ได้หายไปด้วย
+       เพราะมันอยู่ใน audit เป็นตัวชี้ ไม่ใช่อยู่ในแถวที่ถูกลบ (ADR-0011)
+    """
+    from sqlalchemy import func, select
+
+    from care_addons.ap_approval.models import ApApproval, ApApprovalRequest
+
+    with FakeClock("2026-08-19T01:00:00+00:00"):
+        patient, _ = await _patient_with_history(session, tenant)
+        await _erase_with_two_people(session, tenant, patient.patient_id)
+        await session.commit()
+
+        for model in (ApApproval, ApApprovalRequest):
+            left = await session.scalar(
+                select(func.count()).select_from(model).where(model.tenant_id == tenant)
+            )
+            assert left == 0, f"{model.__tablename__} ยังเหลือแถวที่ถือข้อความของคน"
+
+        # หลักฐานสองคนยังอยู่ใน audit — ผู้ยื่นกับผู้ตัดสินเป็นคนละคน
+        events = (
+            await session.execute(
+                select(ApAuditEvent).where(ApAuditEvent.tenant_id == tenant)
+            )
+        ).scalars().all()
+        asked = [e for e in events if e.event_type == "TASK_ASSIGNED"]
+        decided = [e for e in events if e.event_type == "GOVERNANCE_DECISION" and e.attributes]
+        approved = [e for e in decided if e.attributes.get("decision") == "APPROVE"]
+        assert asked and approved
+        assert asked[-1].actor["id"] != approved[-1].attributes["authority_id"]

@@ -147,7 +147,9 @@ async def propose_version(
         session,
         scope,
         decision=evaluate("medication.regimen.write"),
-        subject_type="artifact",
+        # `record` มาแล้วใน approval/v1 v1.3.0 (semantics 1.4 · agent-platform#73)
+        # เดิมเลือก `artifact` เพราะไม่มีค่าที่ตรง — audit event ของวัตถุเดียวกันใช้ `record` มาตลอด
+        subject_type="record",
         subject_id=version.version_id,
         summary=f"ยืนยันคำสั่งใช้ยา '{name}' ของผู้ป่วย {patient_id}",
         proposed={
@@ -229,7 +231,7 @@ async def confirm_version(
     # คนกดยืนยันตรง ๆ = เรื่องจบไปทางอื่นแล้ว คำขอที่ค้างอยู่ไม่ต้องตัดสินซ้ำ
     # 🔒 withdrawn ไม่ใช่ approved — path นี้ไม่แตะตาราง ap_approval เลย
     for pending in await approvals.pending_for_subject(
-        session, scope, subject_type="artifact", subject_id=version.version_id
+        session, scope, subject_type="record", subject_id=version.version_id
     ):
         await approvals.withdraw(
             session,
