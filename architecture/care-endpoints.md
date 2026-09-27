@@ -130,3 +130,84 @@ app lifecycle · การจับคู่อุปกรณ์กับ token
 `resume` ต้องไม่ง่ายกว่า `pause` — ซึ่งเป็นเส้นแบ่งเดียวกับ
 [ADR-0029 ของ agent-platform ข้อ 1a](https://github.com/monthop-gmail/agent-platform/blob/main/decisions/0029-the-cost-of-not-acting.md)
 ที่เราเป็นผู้ผลิตรายแรกของมัน
+
+---
+
+# ภาคผนวก — ความพร้อมก่อน implement
+
+เพิ่มเมื่อ 2026-09-27 ตอบ `task-7538109a` ข้อ 2–5 · ตัดสินใจอยู่ที่
+[ADR-0014](../decisions/0014-presentation-intent-is-a-request-not-a-command.md) กับ
+[ADR-0015](../decisions/0015-device-actions-touch-the-real-world.md) · ที่นี่เป็นของที่ตามมาจากสองใบนั้น
+
+## รูป contract ที่ `care_endpoint` จะ consume
+
+```yaml
+# ขาออก — sender ได้ notification ทั้งก้อนเหมือนเดิม + presentation ที่เป็น optional
+notification:
+  text: str                     # สิ่งที่ผู้ป่วยได้อ่าน — ไม่มี markup (ADR-0014 ข้อ 1)
+  channel: code                 # จาก vocabulary ปิด (precondition — ดูด้านล่าง)
+  severity: code
+  presentation:                 # optional · ทุกค่าเป็น code
+    surface: overlay | full_screen | ambient
+    speak: bool
+    response: required | optional | none
+    dwell: short | medium | until_answered
+
+# ขาเข้า — ไม่มีของใหม่ ใช้ของที่มีอยู่ทั้งสามทาง
+acknowledge(care_job_id, *, evidence_kind, done)        # care_escalation/services.py:684
+external_signal(...)                                    # care_activity/services.py:314
+report_signal(...)                                      # care_safety/services.py:80
+
+# ขาออกชนิดใหม่ — device action (ADR-0015)
+media.playback.pause | .cancel | .resume
+```
+
+`presented` เป็นสถานะของ **notification** ไม่ใช่ของงาน · อยู่ข้าง `delivery_status`
+ไม่ใช่ข้าง `evidence` — ข้อนี้เป็นเรื่องของ**ที่อยู่** ไม่ใช่แค่การตั้งชื่อ (ADR-0014 ข้อ 5)
+
+## ผลต่อของที่มีอยู่ และความเข้ากันได้ย้อนหลัง
+
+| ของที่มี | กระทบไหม |
+|---|---|
+| `register_sender()` / sender ของ LINE | **ไม่กระทบ** · `presentation` เป็น optional และ `care_line/outbound.py:20` อ่านแค่ `text` กับ `channel` |
+| `CareNotification` | เพิ่มคอลัมน์ optional · migration แบบ additive · แถวเดิมอ่านได้เหมือนเดิม |
+| `acknowledge()` | ไม่แตะ signature · TV ใช้ตัวเดียวกับ LINE |
+| careplan / medication / escalation / approval / audit | ไม่แตะเลย |
+| `care_patient.channels` | ⚠️ **precondition** — ต้องปิดเป็น vocabulary ก่อน (`models.py:36` วันนี้รับอะไรก็ได้) |
+
+**precondition ข้อเดียวที่ต้องทำก่อนทุกอย่าง** คือ `channels` เพราะถ้าไม่ปิด
+`"tvv"` จะกลายเป็นช่องทางที่ไม่มี sender แล้ว `_deliver()` จะตั้ง `delivery_status = "stored"`
+เงียบ ๆ (`care_escalation/services.py:315`) — คือข้อความไม่ถึงใครโดยไม่มีใคร error
+ซึ่งเป็น fail-closed ที่เงียบ แบบเดียวกับที่เราเจอกับเพดานของ agent
+
+## ตัวตรวจที่จะบังคับสัญญานี้
+
+| ข้อที่ต้องบังคับ | บังคับด้วยอะไร | มีอยู่แล้วไหม |
+|---|---|---|
+| ค่าใน `presentation` เป็น code จากชุดปิด | ทะเบียนใน `ap_audit/attributes.py` + `emit()` reject | ✅ กลไกมีแล้ว เพิ่มคีย์ |
+| ไม่มี code path ไหนแปลง delivery/presented → evidence | AST scan แบบเดียวกับ `REASON_INTERPOLATIONS` (`tests/test_audit_attributes.py`) | ✅ รูปมีแล้ว เขียนตัวใหม่ |
+| `channels` เป็นชุดปิด | test แบบเดียวกับ `CATEGORIES` / `KINDS` ของโดเมนอื่น | ✅ รูปมีแล้ว |
+| `resume` ไม่ต่ำกว่า `notify` และไม่เป็น audited exception | `floor.capabilities` + `profile_check` | ✅ `floor` มีแล้ว · เพิ่มหนึ่งบรรทัด |
+| `pause` ไม่ถูก approval ขวาง | `ap_policy/engine.py:291` — เพดาน profile ยกทับ audited exception ไม่ได้ | ✅ บังคับอยู่แล้ว |
+| ไม่มี `undoes` ผิดทิศ | `load_policy()` boot ไม่ผ่าน + `profile_check` ข้อ 7 | ✅ บังคับอยู่แล้ว |
+| payload ของ endpoint conform | `payload_check` หลังมี schema จริง | ⏳ ตามมากับ implementation |
+
+**หกในเจ็ดข้อบังคับได้ด้วยกลไกที่มีอยู่แล้ว** — ไม่ต้องสร้างชั้นตรวจใหม่
+
+## พร้อมแตก implementation task หรือยัง
+
+**พร้อม สำหรับสามข้อ · ยังไม่พร้อม สำหรับข้อที่สี่**
+
+| ลำดับ | งาน | สถานะ |
+|---|---|---|
+| 0 | ปิด `channels` เป็น vocabulary + test | ✅ พร้อม · เล็ก · เป็น precondition ของทุกข้อ |
+| 1 | `presentation` บน `CareNotification` + ทะเบียนคีย์ + AST ratchet กัน evidence | ✅ พร้อม · ADR-0014 ตัดสินรูปครบแล้ว |
+| 2 | capability สามตัวของ `media.playback.*` + `floor` + profile `deny` ที่ควรมี | ✅ พร้อม · ADR-0015 ตัดสินระดับความเสี่ยงครบแล้ว |
+| 3 | `care-tv-adapter` (`register_sender("tv", …)` + rendering + remote) | ✅ พร้อม แต่เป็นงานคนละ repo |
+| 4 | media intervention ตามพฤติกรรมการดูทีวี | ❌ **ยังไม่พร้อม** — ต้องเก็บข้อมูลชนิดใหม่ · รอ `task-4c4a109f` |
+
+ข้อ 4 ไม่ได้ติดที่เทคนิค และไม่ได้ติดที่การออกแบบ · ติดที่ข้อจำกัดที่ repo นี้ประกาศไว้เอง
+ว่าไม่ขยายการเก็บข้อมูลสุขภาพจนกว่าจะมีคำตอบทางกฎหมาย
+
+> ข้อ 0–3 ไม่ต้องรอข้อ 4 และข้อ 4 ไม่ทำให้ข้อ 0–3 ต้องออกแบบต่างไป
+> เพราะ `pause` ตัวเดียวกันใช้ได้ทั้งสองแบบ ต่างกันแค่ว่า**อะไรเป็นคนสั่ง**
