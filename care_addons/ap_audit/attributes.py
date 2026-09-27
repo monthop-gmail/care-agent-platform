@@ -112,6 +112,7 @@ DECLARED: dict[str, tuple[str, str]] = {
     "source_kind": (CODE, "ที่มาของงาน/สัญญาณ"),
     "settled_as": (CODE, "trail นี้จบแบบไหน"),
     "kind": (CODE, "ชนิดย่อยของ record นั้น ๆ"),
+    "expiry_class": (CODE, "ชนิดกำหนดตายจาก care_endpoint.expiry.CLASSES — ชุดปิด"),
     "category": (CODE, "หมวดของของใช้ในบ้าน"),
     "layer": (CODE, "ชั้นของ orientation"),
     "entry_type": (CODE, "ชนิดของบันทึกใน journal"),

@@ -42,6 +42,11 @@ class Envelope:
     queued_at: float = field(default_factory=time.perf_counter)
     envelope_id: str = field(default_factory=lambda: uuid4().hex)
     expires_at: float | None = None
+    # code จากทะเบียนปิดฝั่งโดเมน (`care_endpoint.expiry.CLASSES`) — ใส่ metrics ได้ ไม่มี PII
+    expiry_class: str | None = None
+    # 🔒 สายงานเดียวกัน: ใบที่ revision ต่ำกว่าถูกแทนแล้ว · `None` = ไม่มีใครแทนได้
+    stream: str | None = None
+    revision: int | None = None
 
 
 class Transport(Protocol):

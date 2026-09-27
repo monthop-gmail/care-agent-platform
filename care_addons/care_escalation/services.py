@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from care_addons.ap_audit import services as audit
 from care_addons.ap_audit.models import ApAuditEvent
 from care_addons.ap_policy.engine import PolicyDenied, evaluate
+from care_addons.care_endpoint import expiry
 from care_addons.care_escalation import policy as escalation_policy
 from care_addons.care_escalation.models import CareJob, CareNotification, validated_presentation
 from care_addons.care_patient.models import CHANNELS
@@ -286,6 +287,7 @@ async def _send(
     channel: str,
     text: str,
     presentation: dict | None = None,
+    patient=None,
 ) -> CareNotification:
     notification = CareNotification(
         tenant_id=scope.tenant_id,
@@ -301,6 +303,11 @@ async def _send(
         sent_at=now(),
     )
     session.add(notification)
+    # 🔒 กำหนดตายต้องถูกตั้ง **ก่อน** ของออกจากโดเมน · ถ้าตั้งหลังส่ง อุปกรณ์จะได้ของ
+    #    ที่ไม่มีกำหนดตายไปแล้วหนึ่งใบ และนั่นคือใบที่จะถูกทำย้อนหลัง (ADR-0016)
+    notification.expires_at, notification.expiry_class = await expiry.for_notification(
+        session, scope, notification, job=job, patient=patient
+    )
     await session.flush()
     await _deliver(session, scope, notification, job=job)
     return notification
@@ -488,6 +495,9 @@ async def send_to_caregivers(
             sent_at=now(),
         )
         session.add(notification)
+        notification.expires_at, notification.expiry_class = await expiry.for_notification(
+            session, scope, notification
+        )
         await session.flush()
         await _deliver(session, scope, notification)
         sent.append(notification)
@@ -598,6 +608,7 @@ async def _remind(session: AsyncSession, scope: TenantScope, job: CareJob, patie
         audience="patient",
         target_principal_id=job.patient_id,
         channel=channel,
+        patient=patient,
         text=text,
         presentation=effective_presentation(
             patient, requested=requested_presentation(job), severity=job.severity, when=now()

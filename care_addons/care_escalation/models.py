@@ -105,6 +105,13 @@ class CareNotification(Base):
     # 🔒 `presentation` คือ **คำขอ** ไม่ใช่สิ่งที่ได้ — `effective_presentation()` เป็นผู้ตัดสิน
     #    หลังผ่าน severity กับ quiet hours · เก็บคำขอไว้เพื่อให้ตรวจย้อนได้ว่าขออะไรไป
     presentation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # ── กำหนดตาย (ADR-0016) ──
+    #
+    # 🔒 โดเมนตั้ง อุปกรณ์บังคับตาม · `expires_at = None` ต้องมาจากกฎที่ประกาศเหตุผลไว้
+    #    (`care_endpoint.expiry` ชนิด `caregiver_help`) ไม่ใช่จากการหาค่าไม่เจอ
+    #    `expiry_class` เป็น code จากทะเบียนปิด จึงใส่ใน audit/metrics ได้ ไม่มี PII
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expiry_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # 🔒 endpoint รายงานว่าวางบนจอจริงแล้ว — อยู่ข้าง delivery ไม่ใช่ข้าง evidence
     #    "แสดงบนจอแล้ว" ไม่ใช่หลักฐานว่าคนเห็น และไม่มีทางกลายเป็น evidence (ADR-0014 ข้อ 5)
     presented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

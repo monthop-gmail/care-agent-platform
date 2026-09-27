@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from care_addons.ap_audit import services as audit
 from care_addons.ap_policy.services import care_action
+from care_addons.care_endpoint import expiry
 
 # เหตุผลที่สั่ง — code จาก vocabulary ปิด ไม่ใช่ข้อความเสรี (ADR-0011)
 TRIGGERS = ["reminder_due", "caregiver_request", "safety_signal"]
@@ -42,6 +43,9 @@ async def _record(
             f"trigger '{trigger}' ไม่อยู่ในชุดปิด {TRIGGERS} — "
             f"การหยุดจอที่ไม่มีที่มาตอบ audit ไม่ได้"
         )
+    # 🔒 คำสั่งต่ออุปกรณ์มีกำหนดตายเสมอ และมาจาก **ที่มาของคำสั่ง** ไม่ใช่จากตัวคำสั่ง
+    #    อย่างเดียว (ADR-0016) · `resume` เข้มกว่า `pause` ตาม ADR-0015 ข้อ 4
+    expires_at, expiry_class = expiry.for_device_action(action, trigger)
     await audit.emit(
         session,
         scope,
@@ -56,9 +60,17 @@ async def _record(
             "capability": capability,
             "kind": action,
             "source_kind": trigger,
+            "expiry_class": expiry_class,
         },
     )
-    return {"patient_id": patient_id, "action": action, "trigger": trigger}
+    return {
+        "patient_id": patient_id,
+        "action": action,
+        "trigger": trigger,
+        # ผู้ที่นำคำสั่งไปใส่คิวของอุปกรณ์ต้องพา `expires_at` ไปด้วย — adapter ไม่คิดเอง
+        "expires_at": expires_at,
+        "expiry_class": expiry_class,
+    }
 
 
 @care_action("media.playback.pause", autonomous=True)
