@@ -20,6 +20,7 @@
 | [0013](0013-erasure-takes-two-people.md) | การลบข้อมูลของคนต้องใช้คนสองคน — ไม่มี endpoint ที่ลบได้ด้วย request เดียว | Accepted |
 | [0014](0014-presentation-intent-is-a-request-not-a-command.md) | presentation intent เป็นคำขอ ไม่ใช่คำสั่ง — ไม่มีสถานะไหนกลายเป็นหลักฐานเอง | Accepted |
 | [0015](0015-device-actions-touch-the-real-world.md) | การกระทำต่ออุปกรณ์เป็น capability ชนิดใหม่ — หยุดต้องไม่รอใคร | Accepted |
+| [0016](0016-a-deadline-is-a-care-decision.md) | กำหนดตายของงานที่ส่งออกไปที่อุปกรณ์เป็นการตัดสินของการดูแล ไม่ใช่ของ transport | Accepted |
 
 ## กติกา
 

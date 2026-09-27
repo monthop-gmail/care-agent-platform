@@ -36,7 +36,19 @@ class TvChannel:
                         "notification_id": notification.id,
                         "text": notification.text,
                         "plan": None if plan is None else plan.__dict__,
+                        "care_job_id": notification.care_job_id,
                     },
+                    # 🔒 **คัดลอก** มาจากแถว ไม่ได้คำนวณที่นี่ — adapter ไม่มีสิทธิ์ตั้งกำหนดตาย
+                    #    (`care_endpoint/expiry.py` เป็นฝ่ายตัดสิน · ADR-0016)
+                    expires_at=(
+                        None if notification.expires_at is None
+                        else notification.expires_at.timestamp()
+                    ),
+                    expiry_class=notification.expiry_class,
+                    # สายงาน = งานหนึ่งใบ · id ของแถวเดินหน้าเสมอ จึงใช้เป็น revision ได้
+                    stream=None if notification.care_job_id is None
+                    else f"job:{notification.care_job_id}",
+                    revision=notification.id,
                 )
             )
             if plan is not None and plan.speak:

@@ -253,6 +253,37 @@ transport จริงบน HTTP เป็น **at-least-once** เสมอ (�
 > งานหายเงียบตอนปิดแอป คือผู้ป่วยไม่ได้รับการเตือนโดยไม่มีใครรู้ว่าเพราะอะไร
 > — เป็นรูปเดียวกับ fail-closed ที่เงียบ ซึ่ง repo นี้เจอซ้ำมาหลายรอบ
 
+## กำหนดตาย — ใครตั้ง ใครบังคับ และเห็นอะไรได้ (ADR-0016)
+
+โดเมนตั้ง อุปกรณ์บังคับตาม · `care_addons/care_endpoint/expiry.py` ถือทะเบียนปิดของชนิด
+กำหนดตาย และ `care_notification` เก็บ `expires_at` + `expiry_class` ไว้ก่อนของออกจากโดเมน
+
+ฐานของช่วงเวลาไม่ใช่เลขที่เราคิดขึ้น แต่เป็น **`grace_minutes` ที่ทีมดูแลตั้งไว้ต่อกิจวัตร**
+ซึ่งอยู่ในฐานข้อมูลตั้งแต่ schema แรกและยังไม่เคยมีโค้ดไหนอ่านมันเลย
+
+| ชนิด | กฎ | ของที่หมดอายุแล้ว |
+|---|---|---|
+| `orientation` | สิ้นวันของผู้ป่วย (timezone ของเขา) | ทิ้ง |
+| `medication_prompt` | ช่วงของงาน · **เพดาน = รอบยาถัดไป** | ทิ้ง |
+| `routine_prompt` | ช่วงของงาน | ทิ้ง |
+| `caregiver_help` | **ไม่หมดอายุ — ประกาศไว้** | ไม่มี |
+| `device_pause` / `device_cancel` | ช่วงของงานที่เป็นเหตุ | ทิ้ง |
+| `device_resume` | **1 นาที เพดานแข็ง** (ADR-0015 ข้อ 4) | ทิ้ง · ปล่อยให้จอดับ |
+| `caregiver_request_action` | 2 นาที (เพดาน 5) | ทิ้ง |
+| `safety_action` | 5 นาที (เพดาน 10) | ทิ้ง |
+
+### metrics ที่ operator เห็น และสิ่งที่มันตั้งใจไม่บอก
+
+`RuntimeStats` นับสี่อย่างแยกกัน `expired` · `duplicates` · `superseded` · `failures`
+และ `expired_by_class` แยกตาม **code ของชนิดงาน**
+
+🔒 ตัวนับไม่มีชื่อผู้ป่วย ไม่มี id ผู้ป่วย และไม่มีข้อความบนจอ — คีย์ทุกตัวมาจากทะเบียนปิด
+(มีเทสยืนยันว่า `set(expired_by_class) ⊆ CLASSES ∪ {"undeclared"}`) · `expiry_class`
+ประกาศใน `ap_audit/attributes.py` เป็น `CODE` จึงใส่ audit ได้ตาม ADR-0011
+
+ตัวเลขที่ควรดู: `expired_by_class["medication_prompt"]` ที่ค้างสูงแปลว่า **คำเตือนกินยา
+ไปไม่ถึงจอทันช่วงของมัน** ซึ่งเป็นปัญหาการดูแล ไม่ใช่ปัญหาเครือข่าย
+
 ## สิ่งที่พิสูจน์แล้วด้วยเทส
 
 | เกณฑ์ | เทส |
@@ -274,6 +305,15 @@ transport จริงบน HTTP เป็น **at-least-once** เสมอ (�
 | เลยกำหนดตายแล้วไม่ทำย้อนหลัง · adapter ไม่คิด TTL เอง | `test_a_command_past_its_deadline_is_dropped_and_counted` · `test_the_adapter_never_invents_a_deadline_of_its_own` |
 | cancel ทะลุออก คิวไม่หาย | `test_cancelling_the_loop_propagates_and_keeps_the_queue` |
 | ออฟไลน์ = ไม่ทำและไม่อ้างว่าส่งแล้ว | `test_nothing_is_dispatched_while_the_link_is_down` |
+| ทุกชนิดกำหนดตายอธิบายตัวเองได้ · `None` มาจากกฎที่ประกาศเท่านั้น | `test_every_class_states_a_care_reason_not_just_a_number` · `test_only_a_declared_never_rule_produces_no_deadline` |
+| ช่วงเวลามาจาก `grace_minutes` ของทีมดูแล ไม่ใช่เลขที่ฝังไว้ | `test_the_work_window_comes_from_grace_minutes_that_the_care_team_already_sets` |
+| คำเตือนกินยาไม่ข้ามรอบถัดไป | `test_a_medication_prompt_never_outlives_the_next_dose` |
+| `resume` สดสั้นกว่า `pause` เสมอ | `test_resume_is_strictly_fresher_than_pause_for_the_same_trigger` |
+| หมดอายุระหว่างเน็ตหลุด ไม่ถูกทำตอนกลับมา | `test_an_envelope_that_expires_while_the_link_is_down_is_not_run_on_recovery` |
+| ใบเก่าของงานเดียวกันถูกแทน · คำสั่งอุปกรณ์ไม่ถูกยุบ | `test_a_superseded_reminder_does_not_appear_twice_on_the_screen` · `test_device_actions_are_never_collapsed_as_supersession` |
+| กดตอบคำถามที่หมดอายุไม่กลายเป็นหลักฐาน · แต่ขอความช่วยเหลือไม่ถูกกั้น | `test_pressing_done_on_an_expired_prompt_is_refused_before_it_becomes_evidence` · `test_asking_for_help_is_never_blocked_by_freshness` |
+| LINE ยังส่งได้และไม่สนใจคอลัมน์ใหม่ | `test_line_still_works_and_ignores_the_new_columns` |
+| ตัวนับไม่มี PII | `test_an_envelope_that_expired_before_the_poll_is_dropped_by_class` |
 | ไม่มีชื่อ vendor ในสัญญากลาง | `test_no_vendor_identifier_leaks_into_the_contract` |
 | ไม่มีการเก็บพฤติกรรมการดูสื่อ | `test_nothing_collects_media_viewing_behaviour` |
 | credential ไม่มี PII · โค้ดจับคู่ไม่หลุดเข้า log | `test_credentials_carry_no_patient_data_and_never_print_the_token` · `test_a_pairing_code_can_be_redacted_before_it_reaches_a_log` |

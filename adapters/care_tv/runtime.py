@@ -18,6 +18,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from adapters.care_tv import actions
+from adapters.care_tv.prompts import PromptBook
 from adapters.care_tv.speech import NullSpeaker, Speaker
 from adapters.care_tv.transport import Envelope, InMemoryQueue, PollingTransport
 
@@ -69,6 +70,9 @@ class RuntimeStats:
     reconnects: int = 0
     duplicates: int = 0
     expired: int = 0
+    superseded: int = 0
+    # 🔒 metrics แยกตาม **code** ของชนิดงาน ไม่ใช่ตามผู้ป่วย — ไม่มี PII ในตัวนับ
+    expired_by_class: dict[str, int] = field(default_factory=dict)
 
 
 class AdapterRuntime:
@@ -87,16 +91,19 @@ class AdapterRuntime:
         backoff_base: float = 0.5,
         backoff_cap: float = 30.0,
         clock=time.time,
+        prompts: PromptBook | None = None,
     ) -> None:
         self.transport = transport
         self.controller = controller or actions.RecordingController()
         self.speaker = speaker or NullSpeaker()
         self.backoff_base = backoff_base
         self.backoff_cap = backoff_cap
+        self.prompts = prompts or PromptBook()
         self.clock = clock          # ฉีดได้เพื่อให้เทสกำหนดตายโดยไม่ต้องรอเวลาจริง
         self.stats = RuntimeStats()
         self._stopping = False
         self._seen: OrderedDict[str, None] = OrderedDict()
+        self._revision: OrderedDict[str, int] = OrderedDict()
 
     # ── idempotency · กำหนดตาย ──────────────────────────────────────────────
     def _already_done(self, envelope: Envelope) -> bool:
@@ -127,17 +134,51 @@ class AdapterRuntime:
         if self.clock() <= envelope.expires_at:
             return False
         self.stats.expired += 1
+        cls = envelope.expiry_class or "undeclared"
+        self.stats.expired_by_class[cls] = self.stats.expired_by_class.get(cls, 0) + 1
         logger.warning(
             "ทิ้ง envelope ที่เลยกำหนดตาย %s (%s) — ไม่ทำย้อนหลัง",
             envelope.envelope_id[:8], envelope.kind,
         )
         return True
 
+    def _superseded(self, envelope: Envelope, newest: dict[str, int] | None = None) -> bool:
+        """ใบเก่าของสายงานเดียวกันถูกแทนแล้ว — ไม่ต้องขึ้นจอซ้อนกัน
+
+        🔒 เตือนครั้งที่สองของงานเดียวกันคือ **ใบแทน** ไม่ใช่ใบเพิ่ม · ถ้าปล่อยทั้งสองใบ
+           ผู้ป่วยเห็นคำเตือนเรื่องเดียวกันสองอันและไม่รู้ว่าอันไหนคืออันที่ต้องตอบ
+
+        `stream = None` แปลว่าไม่มีใครแทนได้ — คำสั่งต่ออุปกรณ์แต่ละใบเป็นคำสั่งของตัวเอง
+        """
+        if envelope.stream is None or envelope.revision is None:
+            return False
+        latest = max(
+            self._revision.get(envelope.stream, -1),
+            (newest or {}).get(envelope.stream, -1),
+        )
+        latest = None if latest < 0 else latest
+        if latest is not None and envelope.revision < latest:
+            self.stats.superseded += 1
+            logger.info(
+                "ข้าม envelope ที่ถูกแทนแล้ว %s (%s rev %s < %s)",
+                envelope.envelope_id[:8], envelope.stream, envelope.revision, latest,
+            )
+            return True
+        self._revision[envelope.stream] = envelope.revision
+        while len(self._revision) > SEEN_LIMIT:
+            self._revision.popitem(last=False)
+        return False
+
     # ── dispatch ────────────────────────────────────────────────────────────
     def dispatch(self, envelope: Envelope) -> None:
         """envelope มีสองชนิด และ adapter ไม่ตีความเพิ่มไปกว่านั้น"""
         if envelope.kind == "present":
             plan_dict = envelope.payload.get("plan")
+            care_job_id = envelope.payload.get("care_job_id")
+            # 🔒 คำถามที่รอคำตอบจากคนต้องจำกำหนดตายไว้ ไม่งั้นการกดปุ่มเมื่อไรก็ได้
+            #    จะกลายเป็นหลักฐานของงานที่ปิดไปแล้ว (`prompts.py`)
+            if care_job_id and plan_dict and plan_dict.get("needs_answer"):
+                self.prompts.remember(care_job_id, envelope.expires_at)
             if plan_dict and plan_dict.get("speak"):
                 self.speaker.say(envelope.payload.get("text", ""))
             self.stats.presented += 1
@@ -171,8 +212,18 @@ class AdapterRuntime:
                 continue
             consecutive = 0
             self.stats.polls += 1
+            # 🔒 **ไม่จัดลำดับ batch ใหม่** — ลำดับที่โดเมนใส่คิวมีความหมาย (หยุดจอก่อนเตือน)
+            #    การหาใบใหม่สุดของแต่ละสายงานทำแยกก่อน แล้ววนตามลำดับเดิม
+            newest: dict[str, int] = {}
+            for e in batch:
+                if e.stream is not None and e.revision is not None:
+                    newest[e.stream] = max(newest.get(e.stream, e.revision), e.revision)
             for envelope in batch:
-                if self._already_done(envelope) or self._too_late(envelope):
+                if (
+                    self._already_done(envelope)
+                    or self._too_late(envelope)
+                    or self._superseded(envelope, newest)
+                ):
                     continue
                 try:
                     self.dispatch(envelope)
