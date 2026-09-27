@@ -231,6 +231,24 @@ MVP เดินด้วย **รอบ poll 5 วินาที** ตาม `
 | เน็ตบ้านหลุดกลางดึก | ถอยแบบทวีคูณ (มีเพดาน) แล้วต่อใหม่ · loop **ไม่ตาย** · งานที่ค้างถูกส่งหลังต่อได้ |
 | ปิดแอป / อุปกรณ์ดับ | `stop()` **ไม่ดึงคิว** — งานที่ยังไม่ถูกส่งอยู่ในคิวต่อ · คำสั่งหยุดค้างอยู่ เรียก `run()` ซ้ำก็ไม่เริ่ม |
 | envelope ชนิดที่ไม่รู้จัก | บันทึกไว้ใน `stats.failures` แล้วไปต่อ · **ไม่เดา** และไม่ทำให้ของชิ้นถัดไปค้าง |
+| คำสั่งเดิมถูกส่งมาซ้ำ | ตัดด้วย `envelope_id` ที่ฝั่งรับ · ทำครั้งเดียว · นับไว้ใน `stats.duplicates` |
+| เครื่องออฟไลน์ไปนานแล้วกลับมา | คำสั่งที่เลย `expires_at` ถูก**ทิ้งและนับ** ไม่ถูกทำย้อนหลัง |
+| ถูก `cancel()` กลางทาง | `CancelledError` ทะลุออกไป · id ถูกถอนออกจากชุด "เคยทำแล้ว" · คิวไม่หาย |
+
+### ตัดซ้ำ และกำหนดตาย — สองเรื่องที่มาพร้อมกับการทำงานจริง
+
+transport จริงบน HTTP เป็น **at-least-once** เสมอ (ส่งแล้ว ack หาย แล้วส่งซ้ำ) และ
+
+> `pause` ซ้ำคือ **การกระทำต่อโลกจริงสองครั้ง** ไม่ใช่การเขียนค่าเดิมทับ
+
+จึงตัดซ้ำที่ **ฝั่งรับ** ไม่ใช่ที่คิว — เพราะการส่งซ้ำเกิดหลังคิวปล่อยของไปแล้ว ·
+ชุดที่จำมีเพดาน (`SEEN_LIMIT`) เพราะนี่คือโค้ดที่รันบนกล่องทีวี ไม่ใช่บนเซิร์ฟเวอร์
+
+`expires_at` เป็น epoch ไม่ใช่ `perf_counter` โดยเจตนา — กำหนดตายต้องเทียบกันได้
+**ข้ามเครื่องและข้ามการรีบูต** ซึ่ง `perf_counter` ทำไม่ได้ · และ
+
+> 🔒 `expires_at = None` หมายถึงไม่มีกำหนดตาย · adapter **ห้ามคิด TTL ขึ้นมาเอง**
+> กำหนดตายเป็นการตัดสินของโดเมน ไม่ใช่ของอุปกรณ์
 
 > งานหายเงียบตอนปิดแอป คือผู้ป่วยไม่ได้รับการเตือนโดยไม่มีใครรู้ว่าเพราะอะไร
 > — เป็นรูปเดียวกับ fail-closed ที่เงียบ ซึ่ง repo นี้เจอซ้ำมาหลายรอบ
@@ -251,6 +269,11 @@ MVP เดินด้วย **รอบ poll 5 วินาที** ตาม `
 | ปิดแล้วงานในคิวไม่หาย | `test_stopping_the_adapter_never_loses_queued_work` · `test_stopping_mid_flight_ends_the_loop_within_one_interval` |
 | envelope แปลกปลอมถูกบันทึก ไม่ถูกเดา | `test_an_unknown_envelope_kind_is_recorded_and_does_not_kill_the_loop` |
 | loop ไม่เอ่ยชื่อโดเมนเลย | `test_the_runtime_names_no_domain_module_at_all` |
+| ส่งซ้ำแล้วทำครั้งเดียว · ไม่เหมาเอาคำสั่งจริงสองครั้งเป็นซ้ำ | `test_the_same_envelope_delivered_twice_acts_once` · `test_two_different_commands_are_not_mistaken_for_duplicates` |
+| ชุดตัดซ้ำมีเพดาน | `test_the_dedup_memory_is_bounded_so_a_tv_box_does_not_grow_forever` |
+| เลยกำหนดตายแล้วไม่ทำย้อนหลัง · adapter ไม่คิด TTL เอง | `test_a_command_past_its_deadline_is_dropped_and_counted` · `test_the_adapter_never_invents_a_deadline_of_its_own` |
+| cancel ทะลุออก คิวไม่หาย | `test_cancelling_the_loop_propagates_and_keeps_the_queue` |
+| ออฟไลน์ = ไม่ทำและไม่อ้างว่าส่งแล้ว | `test_nothing_is_dispatched_while_the_link_is_down` |
 | ไม่มีชื่อ vendor ในสัญญากลาง | `test_no_vendor_identifier_leaks_into_the_contract` |
 | ไม่มีการเก็บพฤติกรรมการดูสื่อ | `test_nothing_collects_media_viewing_behaviour` |
 | credential ไม่มี PII · โค้ดจับคู่ไม่หลุดเข้า log | `test_credentials_carry_no_patient_data_and_never_print_the_token` · `test_a_pairing_code_can_be_redacted_before_it_reaches_a_log` |

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from adapters.care_tv import actions
@@ -33,6 +35,9 @@ MEASURED_LATENCY = {
     30.0: {"p50": 10.098, "p95": 25.489, "max": 25.489},
 }
 MVP_INTERVAL = 5.0          # dec-3493b67e
+
+# จำ id ที่เคยทำแล้วเท่านี้ — พอสำหรับการส่งซ้ำที่เกิดจริง และไม่โตไม่รู้จบบนกล่องทีวี
+SEEN_LIMIT = 512
 
 
 def disclosure(interval: float = MVP_INTERVAL) -> str:
@@ -62,6 +67,8 @@ class RuntimeStats:
     actions_done: int = 0
     failures: list[str] = field(default_factory=list)
     reconnects: int = 0
+    duplicates: int = 0
+    expired: int = 0
 
 
 class AdapterRuntime:
@@ -79,14 +86,52 @@ class AdapterRuntime:
         speaker: Speaker | None = None,
         backoff_base: float = 0.5,
         backoff_cap: float = 30.0,
+        clock=time.time,
     ) -> None:
         self.transport = transport
         self.controller = controller or actions.RecordingController()
         self.speaker = speaker or NullSpeaker()
         self.backoff_base = backoff_base
         self.backoff_cap = backoff_cap
+        self.clock = clock          # ฉีดได้เพื่อให้เทสกำหนดตายโดยไม่ต้องรอเวลาจริง
         self.stats = RuntimeStats()
         self._stopping = False
+        self._seen: OrderedDict[str, None] = OrderedDict()
+
+    # ── idempotency · กำหนดตาย ──────────────────────────────────────────────
+    def _already_done(self, envelope: Envelope) -> bool:
+        """ส่งซ้ำต้องไม่กลายเป็นการกระทำซ้ำ
+
+        🔒 ตัดซ้ำอยู่ที่ **ฝั่งรับ** ไม่ใช่ที่คิว เพราะการส่งซ้ำเกิดหลังคิวปล่อยของไปแล้ว
+        """
+        if envelope.envelope_id in self._seen:
+            self.stats.duplicates += 1
+            logger.info("ข้าม envelope ซ้ำ %s (%s)", envelope.envelope_id[:8], envelope.kind)
+            return True
+        self._seen[envelope.envelope_id] = None
+        while len(self._seen) > SEEN_LIMIT:
+            self._seen.popitem(last=False)
+        return False
+
+    def _too_late(self, envelope: Envelope) -> bool:
+        """ของที่เลยกำหนดตายต้องไม่ถูกทำย้อนหลัง
+
+        🔒 นี่คือความหมายของ "offline" ในระบบนี้ · เครื่องดับไปสี่สิบนาทีแล้วกลับมา
+           การหยุดจอตามคำสั่งเก่าไม่ใช่การทำงานที่ค้างไว้ให้เสร็จ — มันคือ
+           **การกระทำที่เหตุผลหมดอายุไปแล้ว** และผู้ป่วยเป็นคนรับผล
+
+        และของที่ถูกทิ้งต้อง **นับให้เห็น** ไม่ใช่หายเงียบ
+        """
+        if envelope.expires_at is None:
+            return False
+        if self.clock() <= envelope.expires_at:
+            return False
+        self.stats.expired += 1
+        logger.warning(
+            "ทิ้ง envelope ที่เลยกำหนดตาย %s (%s) — ไม่ทำย้อนหลัง",
+            envelope.envelope_id[:8], envelope.kind,
+        )
+        return True
 
     # ── dispatch ────────────────────────────────────────────────────────────
     def dispatch(self, envelope: Envelope) -> None:
@@ -127,8 +172,15 @@ class AdapterRuntime:
             consecutive = 0
             self.stats.polls += 1
             for envelope in batch:
+                if self._already_done(envelope) or self._too_late(envelope):
+                    continue
                 try:
                     self.dispatch(envelope)
+                except asyncio.CancelledError:
+                    # 🔒 ถูกยกเลิกกลางทาง: ถอน id ออกจาก seen เพื่อให้การส่งซ้ำยังทำได้
+                    #    ไม่งั้นงานจะ "เคยทำแล้ว" ทั้งที่ยังไม่ได้ทำ
+                    self._seen.pop(envelope.envelope_id, None)
+                    raise
                 except Exception as e:
                     # 🔒 ล้มเหลวต้องเห็นได้ ไม่ใช่หายเงียบ — และไม่ทำให้ envelope อื่นค้าง
                     self.stats.failures.append(f"{envelope.kind}: {type(e).__name__}")
