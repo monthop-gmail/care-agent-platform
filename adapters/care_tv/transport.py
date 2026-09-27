@@ -16,15 +16,32 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Protocol
+from uuid import uuid4
 
 
 @dataclass
 class Envelope:
-    """งานหนึ่งชิ้นที่ต้องไปถึงอุปกรณ์ · `queued_at` คือฐานของการวัด latency"""
+    """งานหนึ่งชิ้นที่ต้องไปถึงอุปกรณ์
+
+    🔒 `envelope_id` มีเพื่อให้ฝั่งรับ **ตัดซ้ำได้** · transport จริงบน HTTP เป็น
+       at-least-once เสมอ (ส่งแล้ว ack หาย → ส่งซ้ำ) และการสั่ง `pause` ซ้ำคือ
+       **การกระทำต่อโลกจริงสองครั้ง** ไม่ใช่การเขียนค่าเดิมทับ
+
+    สองเวลาในใบนี้ใช้นาฬิกาต่างกัน และตั้งใจให้ต่าง:
+
+    * `queued_at` — `perf_counter()` · ใช้วัด latency ในกระบวนการเดียวเท่านั้น
+    * `expires_at` — epoch (`time.time()`) · เป็นกำหนดตายที่ต้องเทียบกันได้
+      **ข้ามเครื่องและข้ามการรีบูต** ซึ่ง `perf_counter` ทำไม่ได้
+
+    🔒 `expires_at` เป็น `None` ได้ และค่า `None` หมายถึง "ไม่มีกำหนดตาย"
+       adapter **ห้ามคิด TTL ขึ้นมาเอง** — กำหนดตายเป็นการตัดสินของโดเมน
+    """
 
     kind: str                   # "present" | "device_action"
     payload: dict
     queued_at: float = field(default_factory=time.perf_counter)
+    envelope_id: str = field(default_factory=lambda: uuid4().hex)
+    expires_at: float | None = None
 
 
 class Transport(Protocol):

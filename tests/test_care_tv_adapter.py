@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import pathlib
 import statistics
 
@@ -275,3 +276,271 @@ def test_config_comes_from_env_and_hides_the_token():
     assert config.api_base == "https://care.example" and config.device_id == "tv-9"
     assert config.redacted()["token"] == "***"
     assert AdapterConfig.from_env({}).token == "", "ไม่มี default token ที่ใช้งานได้"
+
+
+# ── E) loop ที่รันจริง · lifecycle · การเปิดเผยตัวเลข (dec-3493b67e) ─────────
+
+
+def test_the_mvp_baseline_is_five_seconds_and_says_what_that_costs():
+    """`dec-3493b67e` — 5 วินาทีเป็น baseline และต้องเปิดเผยตัวเลขที่วัดได้"""
+    from adapters.care_tv import runtime
+
+    assert runtime.MVP_INTERVAL == 5.0
+    text = runtime.disclosure()
+    assert "4.501" in text, "ต้องมี p95 ที่วัดได้จริงอยู่ในข้อความ"
+    assert "ไม่ใช่การหยุดที่เกิดขึ้นพร้อมคำสั่ง" in text
+    assert "SLA" in text and "รอบ poll" in text
+
+
+def test_an_unmeasured_interval_refuses_to_claim_anything():
+    """รอบที่ยังไม่ได้วัด ต้องไม่มีตัวเลขให้ใครหยิบไปอ้าง"""
+    from adapters.care_tv import runtime
+
+    text = runtime.disclosure(7.0)
+    assert "ยังไม่ถูกวัด" in text
+    assert "p95" not in text
+
+
+async def test_the_loop_dispatches_each_envelope_kind_to_the_right_place():
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope
+
+    queue, loop = runtime.build(interval=0.01)
+    queue.put(Envelope(kind="present", payload={"text": "ยาเช้า", "plan": {"speak": True}}))
+    queue.put(Envelope(kind="device_action", payload={"action": "pause"}))
+    stats = await loop.run(max_polls=1)
+
+    assert (stats.presented, stats.actions_done) == (1, 1)
+    assert loop.controller.calls == ["pause"]
+    assert loop.speaker.spoken == ["ยาเช้า"]
+    assert stats.failures == []
+
+
+async def test_an_unknown_envelope_kind_is_recorded_and_does_not_kill_the_loop():
+    """ล้มเหลวต้องเห็นได้ ไม่ใช่หายเงียบ และต้องไม่ทำให้ของอื่นค้าง"""
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope
+
+    queue, loop = runtime.build(interval=0.01)
+    queue.put(Envelope(kind="teleport", payload={}))
+    queue.put(Envelope(kind="device_action", payload={"action": "cancel"}))
+    stats = await loop.run(max_polls=1)
+
+    assert len(stats.failures) == 1 and "teleport" in stats.failures[0]
+    assert loop.controller.calls == ["cancel"], "envelope ถัดไปต้องยังถูกส่ง"
+
+
+async def test_a_dropped_connection_backs_off_and_reconnects():
+    """เน็ตในบ้านหลุดต้องไม่ทำให้ loop ตาย"""
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope, InMemoryQueue, PollingTransport
+
+    class FlakyTransport(PollingTransport):
+        def __init__(self, queue):
+            super().__init__(queue, interval=0.01)
+            self.attempts = 0
+
+        async def next_batch(self):
+            self.attempts += 1
+            if self.attempts <= 2:
+                raise ConnectionError("เน็ตหลุด")
+            return await super().next_batch()
+
+    queue = InMemoryQueue()
+    queue.put(Envelope(kind="device_action", payload={"action": "resume"}))
+    loop = runtime.AdapterRuntime(FlakyTransport(queue), backoff_base=0.01, backoff_cap=0.05)
+    stats = await loop.run(max_polls=1)
+
+    assert stats.reconnects == 2, "ต้องพยายามต่อใหม่ ไม่ใช่ยอมแพ้"
+    assert loop.controller.calls == ["resume"], "งานที่ค้างต้องถูกส่งหลังต่อได้"
+
+
+async def test_stopping_the_adapter_never_loses_queued_work():
+    """🔒 ปิดแอปแล้วงานหายคือผู้ป่วยไม่ได้รับการเตือนโดยไม่มีใครรู้ว่าเพราะอะไร"""
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope
+
+    queue, loop = runtime.build(interval=0.01)
+    await loop.run(max_polls=1)                  # เริ่มทำงานปกติก่อน
+    queue.put(Envelope(kind="device_action", payload={"action": "pause"}))
+    loop.stop()                                  # ← ปิดแอป/อุปกรณ์ดับ
+    stats = await loop.run(max_polls=5)
+
+    assert stats.polls == 1, "หยุดแล้วต้องไม่ poll ต่อ แม้จะถูกเรียก run ซ้ำ"
+    assert loop.controller.calls == [], "ไม่มีอะไรถูกส่งหลังสั่งหยุด"
+    assert len(queue) == 1, "งานที่ยังไม่ถูกส่งต้องอยู่ในคิวต่อ ไม่ใช่หายไปกับการปิด"
+
+
+async def test_stopping_mid_flight_ends_the_loop_within_one_interval():
+    """หยุดจากข้างนอกขณะ loop กำลังวนอยู่ ต้องจบเอง ไม่ต้องถูก cancel"""
+    import asyncio
+
+    from adapters.care_tv import runtime
+
+    _, loop = runtime.build(interval=0.02)
+    task = asyncio.create_task(loop.run())
+    await asyncio.sleep(0.05)
+    loop.stop()
+    stats = await asyncio.wait_for(task, timeout=1.0)
+
+    assert stats.polls >= 1 and not task.cancelled()
+
+
+def test_the_runtime_names_no_domain_module_at_all():
+    """loop ใหม่ต้องไม่พาโดเมนเข้ามาทางหลังบ้าน
+
+    ตัวตรวจ import ด้านบนคลุม `runtime.py` อยู่แล้ว · ใบนี้แรงกว่าหนึ่งขั้น คือห้าม
+    **เอ่ยชื่อ** `care_addons` เลย — import แบบ string หรือ getattr ก็ไม่รอด
+    """
+    assert "care_addons" not in (ADAPTER / "runtime.py").read_text()
+
+
+def test_the_documented_latency_table_cannot_drift_from_the_code():
+    """🔒 ตัวเลขที่ผู้อ่านเห็นในเอกสาร ต้องเป็นตัวเลขชุดเดียวกับที่โค้ดเปิดเผย
+
+    เคยเกิดมาแล้วในงานอื่นว่าเอกสารประกาศอย่าง โค้ดทำอีกอย่าง และไม่มีใครรู้
+    ตัวตรวจนี้ทำให้แก้ที่เดียวแล้วไม่ตรงกัน = CI แดง
+    """
+    import re
+
+    from adapters.care_tv import runtime
+
+    doc = (ROOT / "architecture" / "care-tv-adapter-split.md").read_text()
+    rows = {
+        float(m.group(1)): (float(m.group(2)), float(m.group(3)))
+        for m in re.finditer(
+            r"^\|\s*\*{0,2}(\d+(?:\.\d+)?)s\*{0,2}\s*\|\s*\d+\s*\|"
+            r"\s*\*{0,2}(\d+\.\d+)s\*{0,2}\s*\|\s*\*{0,2}(\d+\.\d+)s\*{0,2}\s*\|",
+            doc,
+            re.MULTILINE,
+        )
+    }
+    assert rows, "หาตารางตัวเลขในเอกสารไม่เจอ — ตัวตรวจนี้ต้องแก้ตามถ้าตารางย้าย"
+    for interval, measured in runtime.MEASURED_LATENCY.items():
+        assert interval in rows, f"รอบ {interval}s อยู่ในโค้ดแต่ไม่อยู่ในเอกสาร"
+        assert rows[interval] == (measured["p50"], measured["p95"]), (
+            f"รอบ {interval}s: เอกสารว่า {rows[interval]} โค้ดว่า "
+            f"{(measured['p50'], measured['p95'])}"
+        )
+
+
+# ── F) idempotency · กำหนดตาย · การยกเลิก (ตอบ dis-65f4fe3e seq 10) ──────────
+
+
+async def test_the_same_envelope_delivered_twice_acts_once():
+    """🔒 `pause` ซ้ำคือการกระทำต่อโลกจริงสองครั้ง ไม่ใช่การเขียนค่าเดิมทับ
+
+    transport จริงบน HTTP เป็น at-least-once เสมอ — ส่งแล้ว ack หาย แล้วส่งซ้ำ
+    """
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope
+
+    queue, loop = runtime.build(interval=0.01)
+    once = Envelope(kind="device_action", payload={"action": "pause"}, envelope_id="e-1")
+    queue.put(once)
+    await loop.run(max_polls=1)
+    queue.put(once)                               # ← ส่งซ้ำใบเดิม
+    stats = await loop.run(max_polls=2)
+
+    assert loop.controller.calls == ["pause"], "ต้องหยุดจอครั้งเดียว"
+    assert stats.duplicates == 1
+
+
+async def test_two_different_commands_are_not_mistaken_for_duplicates():
+    """ตัดซ้ำต้องดูที่ id ไม่ใช่ที่เนื้อหา — สั่งหยุดสองครั้งจริงต้องหยุดสองครั้ง"""
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope
+
+    queue, loop = runtime.build(interval=0.01)
+    queue.put(Envelope(kind="device_action", payload={"action": "pause"}))
+    queue.put(Envelope(kind="device_action", payload={"action": "pause"}))
+    stats = await loop.run(max_polls=1)
+
+    assert loop.controller.calls == ["pause", "pause"]
+    assert stats.duplicates == 0
+
+
+async def test_the_dedup_memory_is_bounded_so_a_tv_box_does_not_grow_forever():
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope
+
+    queue, loop = runtime.build(interval=0.001)
+    for i in range(runtime.SEEN_LIMIT + 40):
+        queue.put(Envelope(kind="device_action", payload={"action": "resume"}, envelope_id=f"e{i}"))
+    await loop.run(max_polls=1)
+
+    assert len(loop._seen) == runtime.SEEN_LIMIT
+
+
+async def test_a_command_past_its_deadline_is_dropped_and_counted():
+    """🔒 เครื่องดับไปสี่สิบนาทีแล้วกลับมา — การหยุดจอตามคำสั่งเก่าไม่ใช่งานที่ค้าง
+
+    มันคือการกระทำที่เหตุผลหมดอายุไปแล้ว และผู้ป่วยเป็นคนรับผล
+    """
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope, InMemoryQueue, PollingTransport
+
+    queue = InMemoryQueue()
+    loop = runtime.AdapterRuntime(PollingTransport(queue, interval=0.01), clock=lambda: 2_000.0)
+    queue.put(Envelope(kind="device_action", payload={"action": "pause"}, expires_at=1_000.0))
+    queue.put(Envelope(kind="device_action", payload={"action": "cancel"}, expires_at=3_000.0))
+    stats = await loop.run(max_polls=1)
+
+    assert loop.controller.calls == ["cancel"], "ของที่ยังไม่หมดอายุต้องยังทำ"
+    assert stats.expired == 1, "ของที่ถูกทิ้งต้องนับให้เห็น ไม่ใช่หายเงียบ"
+
+
+async def test_the_adapter_never_invents_a_deadline_of_its_own():
+    """🔒 กำหนดตายเป็นการตัดสินของโดเมน · `expires_at=None` = ทำ ไม่ใช่เดา TTL"""
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope, InMemoryQueue, PollingTransport
+
+    queue = InMemoryQueue()
+    loop = runtime.AdapterRuntime(
+        PollingTransport(queue, interval=0.01), clock=lambda: 9_999_999_999.0
+    )
+    queue.put(Envelope(kind="present", payload={"text": "ยาเช้า", "plan": {"speak": True}}))
+    stats = await loop.run(max_polls=1)
+
+    assert stats.expired == 0 and stats.presented == 1
+
+
+async def test_cancelling_the_loop_propagates_and_keeps_the_queue():
+    """cancel ต้องไม่ถูกกลืนโดยตัวจับ exception ของ loop และต้องไม่กินงานในคิว"""
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope
+
+    queue, loop = runtime.build(interval=0.05)
+    task = asyncio.create_task(loop.run())
+    await asyncio.sleep(0.01)
+    queue.put(Envelope(kind="device_action", payload={"action": "pause"}))
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert loop.controller.calls == []
+    assert len(queue) == 1, "งานที่ยังไม่ถูกส่งต้องอยู่ต่อ"
+
+
+async def test_nothing_is_dispatched_while_the_link_is_down():
+    """offline = ไม่ทำอะไร และไม่อ้างว่าส่งแล้ว · ไม่ใช่ทำครึ่งหนึ่ง"""
+    from adapters.care_tv import runtime
+    from adapters.care_tv.transport import Envelope, InMemoryQueue, PollingTransport
+
+    class DeadLink(PollingTransport):
+        async def next_batch(self):
+            raise OSError("ไม่มีเน็ต")
+
+    queue = InMemoryQueue()
+    queue.put(Envelope(kind="device_action", payload={"action": "pause"}))
+    loop = runtime.AdapterRuntime(
+        DeadLink(queue, interval=0.01), backoff_base=0.001, backoff_cap=0.002
+    )
+    task = asyncio.create_task(loop.run())
+    await asyncio.sleep(0.05)
+    loop.stop()
+    stats = await asyncio.wait_for(task, timeout=1.0)
+
+    assert stats.polls == 0 and stats.presented == 0 and stats.actions_done == 0
+    assert stats.reconnects >= 2, "ต้องพยายามต่อใหม่เรื่อย ๆ"
+    assert len(queue) == 1, "งานยังอยู่ รอจนลิงก์กลับมา"

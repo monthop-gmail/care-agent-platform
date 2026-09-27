@@ -210,6 +210,49 @@ scaffold อยู่ที่ `adapters/care_tv/` · เทส contract 16 ต�
 | 5s | ~4.5s | ~17,280 | สมดุลที่เสนอสำหรับ MVP |
 | 30s | ~25s | ~2,880 | ประหยัดสุด · **ไม่เหมาะกับ `pause` เชิงความปลอดภัย** |
 
+## loop ที่รันจริง (`adapters/care_tv/runtime.py`)
+
+MVP เดินด้วย **รอบ poll 5 วินาที** ตาม `dec-3493b67e` · `python -m adapters.care_tv.runtime`
+รัน loop ได้ทันทีโดยไม่ต้องมีทีวี และ **พิมพ์ข้อจำกัดของตัวเองออกมาก่อนเริ่มทำงาน**
+
+```
+รอบ poll 5.0s · latency ที่วัดได้ p50 2.229s p95 4.501s max 4.501s ·
+การหยุดจอ **ไม่ใช่การหยุดที่เกิดขึ้นพร้อมคำสั่ง** — SLA จริงถูกกำหนดโดยรอบ poll ไม่ใช่โดย policy
+```
+
+`runtime.disclosure()` อ่านตัวเลขจาก `runtime.MEASURED_LATENCY` ซึ่งเป็นชุดเดียวกับตารางข้างบน
+และมีเทสบังคับว่าสองที่นี้ต่างกันไม่ได้ · รอบที่ **ยังไม่ถูกวัด** จะไม่มีตัวเลขให้ใครหยิบไปอ้าง
+— `disclosure(7.0)` ตอบว่ายังไม่ถูกวัด ไม่ใช่ประมาณให้
+
+สามข้อที่ lifecycle ต้องทำได้ และเป็นเหตุผลที่ loop นี้ไม่ใช่ `while True: poll()`:
+
+| สถานการณ์ในบ้านจริง | พฤติกรรมที่บังคับด้วยเทส |
+|---|---|
+| เน็ตบ้านหลุดกลางดึก | ถอยแบบทวีคูณ (มีเพดาน) แล้วต่อใหม่ · loop **ไม่ตาย** · งานที่ค้างถูกส่งหลังต่อได้ |
+| ปิดแอป / อุปกรณ์ดับ | `stop()` **ไม่ดึงคิว** — งานที่ยังไม่ถูกส่งอยู่ในคิวต่อ · คำสั่งหยุดค้างอยู่ เรียก `run()` ซ้ำก็ไม่เริ่ม |
+| envelope ชนิดที่ไม่รู้จัก | บันทึกไว้ใน `stats.failures` แล้วไปต่อ · **ไม่เดา** และไม่ทำให้ของชิ้นถัดไปค้าง |
+| คำสั่งเดิมถูกส่งมาซ้ำ | ตัดด้วย `envelope_id` ที่ฝั่งรับ · ทำครั้งเดียว · นับไว้ใน `stats.duplicates` |
+| เครื่องออฟไลน์ไปนานแล้วกลับมา | คำสั่งที่เลย `expires_at` ถูก**ทิ้งและนับ** ไม่ถูกทำย้อนหลัง |
+| ถูก `cancel()` กลางทาง | `CancelledError` ทะลุออกไป · id ถูกถอนออกจากชุด "เคยทำแล้ว" · คิวไม่หาย |
+
+### ตัดซ้ำ และกำหนดตาย — สองเรื่องที่มาพร้อมกับการทำงานจริง
+
+transport จริงบน HTTP เป็น **at-least-once** เสมอ (ส่งแล้ว ack หาย แล้วส่งซ้ำ) และ
+
+> `pause` ซ้ำคือ **การกระทำต่อโลกจริงสองครั้ง** ไม่ใช่การเขียนค่าเดิมทับ
+
+จึงตัดซ้ำที่ **ฝั่งรับ** ไม่ใช่ที่คิว — เพราะการส่งซ้ำเกิดหลังคิวปล่อยของไปแล้ว ·
+ชุดที่จำมีเพดาน (`SEEN_LIMIT`) เพราะนี่คือโค้ดที่รันบนกล่องทีวี ไม่ใช่บนเซิร์ฟเวอร์
+
+`expires_at` เป็น epoch ไม่ใช่ `perf_counter` โดยเจตนา — กำหนดตายต้องเทียบกันได้
+**ข้ามเครื่องและข้ามการรีบูต** ซึ่ง `perf_counter` ทำไม่ได้ · และ
+
+> 🔒 `expires_at = None` หมายถึงไม่มีกำหนดตาย · adapter **ห้ามคิด TTL ขึ้นมาเอง**
+> กำหนดตายเป็นการตัดสินของโดเมน ไม่ใช่ของอุปกรณ์
+
+> งานหายเงียบตอนปิดแอป คือผู้ป่วยไม่ได้รับการเตือนโดยไม่มีใครรู้ว่าเพราะอะไร
+> — เป็นรูปเดียวกับ fail-closed ที่เงียบ ซึ่ง repo นี้เจอซ้ำมาหลายรอบ
+
 ## สิ่งที่พิสูจน์แล้วด้วยเทส
 
 | เกณฑ์ | เทส |
@@ -220,6 +263,17 @@ scaffold อยู่ที่ `adapters/care_tv/` · เทส contract 16 ต�
 | ปุ่ม map แบบ deterministic · ไม่มีปุ่มปิด | `test_remote_keys_map_deterministically_to_the_three_intents` · `test_an_unmapped_remote_key_is_refused_instead_of_guessed` |
 | `pause` ไม่รอใครก่อนเข้าคิว | `test_publishing_a_pause_never_waits_for_anyone` |
 | latency ถูกคุมด้วยรอบ poll | `test_latency_is_bounded_by_the_poll_interval_not_by_policy` |
+| baseline 5s + เปิดเผยตัวเลขที่วัดได้ | `test_the_mvp_baseline_is_five_seconds_and_says_what_that_costs` · `test_an_unmeasured_interval_refuses_to_claim_anything` |
+| ตัวเลขในเอกสาร = ตัวเลขในโค้ด | `test_the_documented_latency_table_cannot_drift_from_the_code` |
+| เน็ตหลุดแล้วต่อใหม่ · loop ไม่ตาย | `test_a_dropped_connection_backs_off_and_reconnects` |
+| ปิดแล้วงานในคิวไม่หาย | `test_stopping_the_adapter_never_loses_queued_work` · `test_stopping_mid_flight_ends_the_loop_within_one_interval` |
+| envelope แปลกปลอมถูกบันทึก ไม่ถูกเดา | `test_an_unknown_envelope_kind_is_recorded_and_does_not_kill_the_loop` |
+| loop ไม่เอ่ยชื่อโดเมนเลย | `test_the_runtime_names_no_domain_module_at_all` |
+| ส่งซ้ำแล้วทำครั้งเดียว · ไม่เหมาเอาคำสั่งจริงสองครั้งเป็นซ้ำ | `test_the_same_envelope_delivered_twice_acts_once` · `test_two_different_commands_are_not_mistaken_for_duplicates` |
+| ชุดตัดซ้ำมีเพดาน | `test_the_dedup_memory_is_bounded_so_a_tv_box_does_not_grow_forever` |
+| เลยกำหนดตายแล้วไม่ทำย้อนหลัง · adapter ไม่คิด TTL เอง | `test_a_command_past_its_deadline_is_dropped_and_counted` · `test_the_adapter_never_invents_a_deadline_of_its_own` |
+| cancel ทะลุออก คิวไม่หาย | `test_cancelling_the_loop_propagates_and_keeps_the_queue` |
+| ออฟไลน์ = ไม่ทำและไม่อ้างว่าส่งแล้ว | `test_nothing_is_dispatched_while_the_link_is_down` |
 | ไม่มีชื่อ vendor ในสัญญากลาง | `test_no_vendor_identifier_leaks_into_the_contract` |
 | ไม่มีการเก็บพฤติกรรมการดูสื่อ | `test_nothing_collects_media_viewing_behaviour` |
 | credential ไม่มี PII · โค้ดจับคู่ไม่หลุดเข้า log | `test_credentials_carry_no_patient_data_and_never_print_the_token` · `test_a_pairing_code_can_be_redacted_before_it_reaches_a_log` |
