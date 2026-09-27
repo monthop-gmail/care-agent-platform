@@ -26,6 +26,8 @@ floor:
     "medication.regimen.write": human_command_required
     "medication.regimen.stop": human_command_required
     "clinical.export": approval_required
+    # เปิดจอต่อต้องมีร่องรอยเสมอ — tenant ตั้งเป็น auto ไม่ได้ (ADR-0015 ข้อ 3)
+    "media.playback.resume": notify
   risk:
     critical: human_command_required
 
@@ -81,6 +83,29 @@ capabilities:
   medication.regimen.write:     { action_risk: high }
   medication.regimen.stop:      { action_risk: critical }
   clinical.export:              { action_risk: high }
+
+  # ── device action (ADR-0015) — ชนิดใหม่ของระบบนี้ ────────────────────────────
+  #
+  # 🔒 ทั้ง 29 capability ก่อนหน้านี้เป็น notify · record · propose ทั้งหมด
+  #    สามตัวนี้เป็นตัวแรกที่ **เปลี่ยนสภาพแวดล้อมของผู้ป่วย**
+  #    ความต่างไม่ใช่ระดับความเสี่ยง แต่คือใครเป็นคนลงมือ
+  #
+  # หยุดต้องไม่รอใคร — รูปเดียวกับ emergency.escalate ด้านล่าง
+  media.playback.pause:
+    action_risk: critical
+    override_authority: notify
+    requires_full_audit: true
+  media.playback.cancel:
+    action_risk: critical
+    override_authority: notify
+    requires_full_audit: true
+  # 🔒 เปิดต่อต้องไม่ง่ายกว่าหยุด · ไม่มีเหตุผลด้านความเร็วมารองรับ จึงไม่ใช่ข้อยกเว้น
+  #    และ floor ด้านบนกัน tenant ลดต่ำกว่า notify (ต้องมีร่องรอยว่าใครสั่งให้เล่นต่อ)
+  #
+  # 🔒 ไม่ประกาศ `undoes` กับ media.playback.pause โดยเจตนา — ADR-0029 กฎ 1a
+  #    การเปิดต่อไม่ใช่การคืนสภาพเดิม ระหว่างจอหยุดผู้ป่วยอาจหลับไปแล้ว
+  #    การเปิดต่อคือการปลุกคน · ถ้าประกาศ กฎจะบังคับให้ resume ง่ายกว่า pause
+  media.playback.resume:        { action_risk: medium }
 
   emergency.escalate:
     action_risk: critical

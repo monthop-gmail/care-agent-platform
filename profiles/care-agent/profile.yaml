@@ -45,6 +45,11 @@ tools:
     - organization.write              # จดชื่อโรงพยาบาลจากเอกสารได้ — เปิดสิทธิ์ไม่ได้
     - organization.membership.end     # ตัดสิทธิ์ได้เสมอ — ทางที่ปลอดภัยต้องไม่มีอะไรขวาง
     - caregiver.notify
+    # device action (ADR-0015) — หยุดจอได้ทันทีเพราะความเร็วคือความปลอดภัย
+    # และเปิดต่อได้แต่ถูก floor บังคับให้ไม่ต่ำกว่า notify เสมอ
+    - media.playback.pause
+    - media.playback.cancel
+    - media.playback.resume
     - emergency.escalate
   deny:
     # 🔒 ไม่มีทางที่ agent จะทำสิ่งเหล่านี้ได้ ต่อให้ policy ของ tenant เผลอเปิด

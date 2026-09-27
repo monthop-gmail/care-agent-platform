@@ -54,6 +54,8 @@ $defs:
       # 🔒 เจ้าของข้อมูลใช้สิทธิ์ขอให้ลบ (ADR-0012) — ไม่ใช่ care.consent.*
       #    เพราะ erasure กับการถอนความยินยอมเป็นการกระทำคนละอย่าง (dec-d1302f96 ข้อ 3)
       - care.patient.erased
+      # การกระทำต่ออุปกรณ์ (ADR-0015) — โดเมนบันทึกว่าสั่งอะไร ไม่ได้บันทึกว่าอุปกรณ์ทำสำเร็จ
+      - care.device.action_requested
 
   Severity:
     description: >-

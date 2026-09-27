@@ -10,6 +10,7 @@ from care_addons.ap_audit import services as audit
 from care_addons.ap_consent.services import require_consent
 from care_addons.ap_policy.services import care_action
 from care_addons.care_patient.models import (
+    CHANNELS,
     DEFAULT_CARE_PROFILE,
     CareCaregiver,
     CarePatient,
@@ -19,6 +20,23 @@ from care_addons.care_patient.models import (
 
 class PatientNotFound(LookupError):
     pass
+
+
+def _validated_channels(channels: list[str] | None) -> list[str]:
+    """ช่องทางที่ไม่รู้จักต้องพังตอนเขียน ไม่ใช่ตอนส่ง (ADR-0014)
+
+    🔒 ถ้าปล่อยผ่าน ผลไม่ใช่ error แต่เป็นข้อความที่ไม่ถึงใครโดยไม่มีใครรู้
+    """
+    values = list(channels or ["app"])
+    unknown = [c for c in values if c not in CHANNELS]
+    if unknown:
+        raise ValueError(
+            f"ช่องทางที่ไม่รู้จัก: {unknown} — ต้องเป็นหนึ่งใน {CHANNELS} "
+            f"(เพิ่มค่าใหม่ต้องแก้ care_patient.models.CHANNELS ซึ่งเป็นจุดที่มีคนรีวิว)"
+        )
+    if not values:
+        raise ValueError("ผู้ป่วยต้องมีช่องทางรับข้อความอย่างน้อยหนึ่งช่อง")
+    return values
 
 
 async def create_patient(
@@ -46,7 +64,7 @@ async def create_patient(
         display_name=display_name,
         timezone=timezone,
         care_profile=profile,
-        channels=list(channels or ["app"]),
+        channels=_validated_channels(channels),
         home_label=home_label,
         quiet_hours_start=quiet_hours[0] if quiet_hours else None,
         quiet_hours_end=quiet_hours[1] if quiet_hours else None,

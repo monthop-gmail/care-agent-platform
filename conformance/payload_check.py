@@ -44,7 +44,7 @@ os.environ.setdefault("PSTACK_ADMIN_PASSWORD", "test-only-admin-password")
 os.environ.setdefault(
     "PSTACK_MODULES",
     "users,tenancy,ap_consent,ap_audit,ap_policy,ap_approval,care_patient,care_escalation,care_routine,"
-    "care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_organization,care_orchestrator",
+    "care_medication,care_journal,care_appointment,care_orientation,care_careplan,care_activity,care_inventory,care_home,care_safety,care_organization,care_orchestrator,care_endpoint",
 )
 
 # schema ที่ต้องมีใน registry เพื่อ resolve $ref ระหว่างไฟล์
@@ -210,6 +210,7 @@ async def run_scenario() -> tuple[list, list, list]:
     from care_addons.care_appointment import services as appointments
     from care_addons.care_careplan import services as careplan
     from care_addons.care_careplan.models import CareCarePlanTask
+    from care_addons.care_endpoint import services as care_endpoint
     from care_addons.care_escalation import services as jobs
     from care_addons.care_home import services as home
     from care_addons.care_home.models import CareHomeItem
@@ -449,6 +450,18 @@ async def run_scenario() -> tuple[list, list, list]:
         async with get_sessionmaker()() as session:
             await bind_tenant(session, tenant_id)
             await orchestrator.run_cycle(session, system)
+            await session.commit()
+
+        # การกระทำต่ออุปกรณ์ — payload ของ care.device.action_requested ต้อง validate ได้
+        # เหมือน event อื่น (ADR-0015) · หยุดแล้วเปิดต่อ เพื่อให้ได้ทั้งสองชั้น authority
+        async with get_sessionmaker()() as session:
+            await bind_tenant(session, tenant_id)
+            await care_endpoint.pause_media(
+                session, system, patient.patient_id, trigger="reminder_due"
+            )
+            await care_endpoint.resume_media(
+                session, admin, patient.patient_id, trigger="caregiver_request"
+            )
             await session.commit()
 
         # ใช้สิทธิ์ขอลบข้อมูล — ใช้ผู้ป่วยอีกรายที่สร้างเพื่อการนี้โดยเฉพาะ
