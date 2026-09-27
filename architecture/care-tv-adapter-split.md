@@ -151,6 +151,79 @@ F. Android TV / TrueID integration                                  ← ท้�
 ข้อ A–E **ไม่ต้องมี TV จริงเลย** และทำให้สัญญาถูกพิสูจน์ก่อนแตะ vendor ตัวไหน
 ซึ่งเป็นเหตุผลเดียวกับที่ `payload_check` ของเรารัน scenario จริงแทนการเชื่อ fixture
 
+---
+
+# ผลวัดจริง (2026-09-27 · `task-becbc14f`)
+
+scaffold อยู่ที่ `adapters/care_tv/` · เทส contract 16 ตัวที่ `tests/test_care_tv_adapter.py`
+รันใน CI ได้โดยไม่มี TV จริง
+
+## ⚠️ เปลี่ยนจากแผน — scaffold ยังอยู่ใน repo นี้ ไม่ใช่ repo แยก
+
+แผนข้างบนเสนอ repo แยก · สิ่งที่ทำจริงคือโฟลเดอร์ในนี้ และนี่คือเหตุผล:
+
+* เกณฑ์รับงานข้อแรกคือ **เทสต้องรันใน CI โดยไม่มี TV จริง** ซึ่งต้องยิงเข้า care API จริง
+* **repo แยกไม่ได้บังคับขอบเขตจริง** — repo แยกยัง `import` ของกันได้ถ้ามีคนติดตั้ง ·
+  ที่บังคับจริงคือ `test_the_adapter_never_imports_domain_logic()` ซึ่งไล่ import
+  ของทุกไฟล์ในแพ็กเกจแล้วฟ้องถ้าแตะ careplan · medication · ap_policy · ap_approval ·
+  ap_audit · ap_consent
+* การย้ายออกควรเกิดตอน **มีโค้ด vendor** เพราะตอนนั้นขอบเขตกลายเป็นเรื่อง build tooling
+  กับจังหวะปล่อยของ ไม่ใช่เรื่องวินัยของคนเขียน
+
+ย้ายโฟลเดอร์ออกได้ทั้งก้อนโดยไม่ต้องแก้ข้างใน
+
+## latency ของ transport — วัดแล้ว ไม่ได้เดา
+
+`python adapters/care_tv/benchmark.py --full` · seed คงที่ · เครื่อง dev ตัวเดียว
+
+| รอบ poll | ตัวอย่าง | p50 | p95 | max |
+|---|---|---|---|---|
+| 0.1s | 40 | 0.053s | 0.097s | 0.097s |
+| 0.25s | 40 | 0.122s | 0.245s | 0.249s |
+| 0.5s | 40 | 0.246s | 0.478s | 0.485s |
+| **1s** | 40 | **0.469s** | **0.915s** | **0.982s** |
+| **5s** | 6 | **2.229s** | **4.501s** | **4.501s** |
+| **15s** | 6 | **8.466s** | **14.217s** | **14.217s** |
+| **30s** | 6 | **10.098s** | **25.489s** | **25.489s** |
+
+รูปที่ได้ตรงกับที่คาด — เวลาที่งานถึงกำหนดไม่ซิงก์กับรอบ poll จึงได้ latency ~ U(0, interval)
+ทำให้ **p50 ≈ ครึ่งรอบ · max → เต็มรอบ**
+
+### สิ่งที่ตัวเลขนี้บอก และเป็นเหตุผลที่ต้องวัด
+
+> **SLA จริงของ `pause` เป็นฟังก์ชันของรอบ poll ไม่ใช่ของ policy**
+>
+> ADR-0015 ให้ `pause` เป็น audited exception เพราะความเร็วคือคุณสมบัติด้านความปลอดภัย
+> แต่ที่รอบ poll 30 วินาที **ครึ่งหนึ่งของคำสั่งหยุดใช้เวลาเกิน 10 วินาที และหางยาวถึง 25 วินาที**
+> — ไม่มีอะไรใน policy ที่บอกเรื่องนี้ได้
+
+**ห้ามเขียนในเอกสารใดว่า "หยุดได้ทันที"** · ถ้าต้องการ p95 ต่ำกว่า 1 วินาที ต้องใช้รอบ poll
+1 วินาที ซึ่งแลกมาด้วย request ประมาณ 86,400 ครั้งต่อเครื่องต่อวัน หรือต้องมี stream
+ซึ่ง **ยังไม่มีชั้นจัดการ connection** และ `StreamTransport` จึง `raise NotImplementedError`
+โดยเจตนา ไม่ได้ทำเหมือนมี
+
+### ข้อแลกเปลี่ยนที่ต้องเลือกด้วยข้อมูลนี้
+
+| รอบ poll | p95 | request/เครื่อง/วัน | เหมาะกับ |
+|---|---|---|---|
+| 1s | ~0.9s | ~86,400 | เครื่องเสียบไฟ · เน็ตบ้าน · ต้องการหยุดเร็ว |
+| 5s | ~4.5s | ~17,280 | สมดุลที่เสนอสำหรับ MVP |
+| 30s | ~25s | ~2,880 | ประหยัดสุด · **ไม่เหมาะกับ `pause` เชิงความปลอดภัย** |
+
+## สิ่งที่พิสูจน์แล้วด้วยเทส
+
+| เกณฑ์ | เทส |
+|---|---|
+| ลงทะเบียนได้โดยไม่แก้ `care_escalation` | `test_the_adapter_registers_without_touching_care_escalation` |
+| adapter ไม่ประเมิน quiet hours ซ้ำ | `test_the_adapter_receives_the_domain_decision_and_does_not_redo_it` · `test_render_is_a_pure_function_of_the_intent_it_was_given` |
+| `mark_presented` ไม่ปิดงานและไม่สร้าง evidence | `test_presented_through_the_adapter_still_does_not_close_work` |
+| ปุ่ม map แบบ deterministic · ไม่มีปุ่มปิด | `test_remote_keys_map_deterministically_to_the_three_intents` · `test_an_unmapped_remote_key_is_refused_instead_of_guessed` |
+| `pause` ไม่รอใครก่อนเข้าคิว | `test_publishing_a_pause_never_waits_for_anyone` |
+| latency ถูกคุมด้วยรอบ poll | `test_latency_is_bounded_by_the_poll_interval_not_by_policy` |
+| ไม่มีชื่อ vendor ในสัญญากลาง | `test_no_vendor_identifier_leaks_into_the_contract` |
+| ไม่มีการเก็บพฤติกรรมการดูสื่อ | `test_nothing_collects_media_viewing_behaviour` |
+| credential ไม่มี PII · โค้ดจับคู่ไม่หลุดเข้า log | `test_credentials_carry_no_patient_data_and_never_print_the_token` · `test_a_pairing_code_can_be_redacted_before_it_reaches_a_log` |
+
 ## สิ่งที่แผนนี้ยังไม่ครอบ
 
 media intervention ตามพฤติกรรมการดูสื่อ — ต้องเก็บข้อมูลชนิดใหม่ · ชนข้อจำกัดที่
