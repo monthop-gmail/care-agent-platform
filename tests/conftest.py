@@ -40,6 +40,7 @@ MODULES = [
     "care_safety",
     "care_organization",
     "care_orchestrator",
+    "care_endpoint",
     "line_oa",
     "care_line",
 ]

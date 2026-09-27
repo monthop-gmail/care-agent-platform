@@ -22,6 +22,16 @@ DEFAULT_CARE_PROFILE = {
 }
 
 
+# 🔓 ช่องทางที่ผู้ป่วยรับข้อความได้ — **ชุดปิด** (ADR-0014 precondition)
+#
+# 🔒 เดิมเป็น JSON list ที่รับอะไรก็ได้ · ผลของการสะกดผิดไม่ใช่ error แต่เป็น
+#    `_deliver()` ตั้ง delivery_status = "stored" เงียบ ๆ คือข้อความไม่ถึงใคร
+#    โดยไม่มีใครรู้ — fail closed ที่เงียบ แบบเดียวกับที่เจอกับเพดานของ agent
+#
+# `app` ไม่มี sender จริงโดยเจตนา (เก็บลง DB อย่างเดียว) — ต่างจากช่องทางที่สะกดผิด
+CHANNELS = ["app", "line", "tv"]
+
+
 class CarePatient(Base):
     __tablename__ = "care_patient"
     __table_args__ = (Index("ix_care_patient_tenant", "tenant_id", "status"),)

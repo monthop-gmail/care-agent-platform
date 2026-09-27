@@ -27,7 +27,8 @@ from care_addons.ap_audit import services as audit
 from care_addons.ap_audit.models import ApAuditEvent
 from care_addons.ap_policy.engine import PolicyDenied, evaluate
 from care_addons.care_escalation import policy as escalation_policy
-from care_addons.care_escalation.models import CareJob, CareNotification
+from care_addons.care_escalation.models import CareJob, CareNotification, validated_presentation
+from care_addons.care_patient.models import CHANNELS
 from care_addons.care_patient.services import care_team, get_patient
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,10 @@ logger = logging.getLogger(__name__)
 # ช่องทางที่ส่งข้อความออกได้จริง — addon ของช่องทาง (เช่น care_line) ลงทะเบียนตัวเองที่นี่
 # ค่าเริ่มต้นไม่มีใครลงทะเบียน = ข้อความถูกบันทึกไว้ใน DB อย่างเดียว (โหมด PoC)
 _SENDERS: dict[str, Any] = {}
+
+
+class UnknownChannel(ValueError):
+    """ช่องทางที่ไม่อยู่ในชุดปิด — ต้องพังให้เห็น ไม่ใช่เก็บเงียบ (ADR-0014)"""
 
 
 def register_sender(channel: str, sender: Any) -> None:
@@ -280,6 +285,7 @@ async def _send(
     target_principal_id: str,
     channel: str,
     text: str,
+    presentation: dict | None = None,
 ) -> CareNotification:
     notification = CareNotification(
         tenant_id=scope.tenant_id,
@@ -288,6 +294,7 @@ async def _send(
         target_principal_id=target_principal_id,
         channel=channel,
         text=text,
+        presentation=presentation,
         severity=job.severity,
         care_job_id=job.care_job_id,
         correlation_id=job.correlation_id,
@@ -297,6 +304,74 @@ async def _send(
     await session.flush()
     await _deliver(session, scope, notification, job=job)
     return notification
+
+
+
+# 🔒 โดเมนเป็นคนขอ ไม่ใช่ endpoint เป็นคนเลือก — quiet hours กับ severity เป็นกติกา
+#    ของ "การดูแล" ไม่ใช่ของอุปกรณ์ · ถ้าอยู่ฝั่ง endpoint ทุกยี่ห้อจะตีความไม่ตรงกัน
+REQUESTED_PRESENTATION = {
+    "medication": {
+        "surface": "overlay",
+        "speak": True,
+        "response": "required",
+        "dwell": "until_answered",
+    },
+    "safety": {"surface": "full_screen", "speak": True, "response": "required", "dwell": "until_answered"},
+}
+DEFAULT_PRESENTATION = {
+    "surface": "overlay",
+    "speak": False,
+    "response": "optional",
+    "dwell": "short",
+}
+
+
+def requested_presentation(job: CareJob) -> dict:
+    return dict(REQUESTED_PRESENTATION.get(job.source_kind, DEFAULT_PRESENTATION))
+
+
+def effective_presentation(
+    patient, *, requested: dict | None, severity: str, when: datetime
+) -> dict | None:
+    """intent ที่ **ได้จริง** หลังผ่าน severity กับ quiet hours (ADR-0014 ข้อ 2)
+
+    🔒 คำขอเป็นเพดาน ไม่ใช่สิ่งที่ได้ — ขอ full_screen ตอนตีสามสำหรับงาน severity low
+       แล้วได้ ambient เงียบ ๆ เป็นพฤติกรรมที่ถูก ไม่ใช่ bug
+       รูปนี้เหมือน profile ที่เป็นเพดานของ agent คือค่าที่กว้างที่สุดชนะไม่ได้
+    """
+    intent = validated_presentation(requested)
+    if intent is None:
+        return None
+    if not in_quiet_hours(patient, when):
+        return intent
+    if not escalation_policy.load().respects_quiet_hours(severity):
+        return intent      # severity สูงพอที่ quiet hours ไม่คุม เช่น critical
+    quiet = dict(intent)
+    quiet["surface"] = "ambient"     # ไม่ยึดจอในเวลาที่เขาควรได้พัก
+    quiet["speak"] = False           # ไม่มีเสียงในเวลาที่ควรเงียบ
+    return quiet
+
+
+async def mark_presented(
+    session: AsyncSession, scope: TenantScope, notification_id: int
+) -> CareNotification:
+    """endpoint รายงานว่าวางบนจอจริงแล้ว
+
+    🔒 ข้อนี้ **ไม่ใช่** evidence และไม่มีทางกลายเป็น evidence (ADR-0014 ข้อ 5)
+       ทางเดียวที่งานปิดได้ยังเป็น `acknowledge()` ที่มีคนกดจริง
+    """
+    row = await session.scalar(
+        select(CareNotification).where(
+            CareNotification.id == notification_id,
+            CareNotification.tenant_id == scope.tenant_id,
+        )
+    )
+    if row is None:
+        raise LookupError(f"ไม่พบ notification {notification_id} ใน tenant นี้")
+    if row.presented_at is None:
+        row.presented_at = now()
+        await session.flush()
+    return row
 
 
 async def _deliver(
@@ -310,9 +385,17 @@ async def _deliver(
 
     `job=None` คือข้อความที่ไม่ได้ผูกกับงานใดงานหนึ่ง เช่นสรุปประจำวัน
     """
+    # 🔒 สองกรณีนี้หน้าตาเหมือนกันมาก่อน และนั่นคือบั๊ก (ADR-0014 precondition)
+    #    ช่องทางที่รู้จักแต่ยังไม่มี sender เช่น "app" = เก็บลง DB อย่างเดียว ถูกต้อง
+    #    ช่องทางที่ **ไม่อยู่ในชุดปิด** = สะกดผิดหรือยังไม่ได้ลงทะเบียน ต้องดัง ไม่ใช่เงียบ
+    if notification.channel not in CHANNELS:
+        raise UnknownChannel(
+            f"ช่องทาง '{notification.channel}' ไม่อยู่ใน care_patient.models.CHANNELS "
+            f"{CHANNELS} — ข้อความจะไม่ถึงใครและไม่มีใครรู้ถ้าปล่อยผ่าน"
+        )
     sender = sender_for(notification.channel)
     if sender is None:
-        notification.delivery_status = "stored"   # ไม่มีช่องทางจริง เก็บไว้ใน DB อย่างเดียว
+        notification.delivery_status = "stored"   # ช่องทางที่รู้จักแต่ยังไม่มีตัวส่งจริง
         await session.flush()
         return
     try:
@@ -516,6 +599,9 @@ async def _remind(session: AsyncSession, scope: TenantScope, job: CareJob, patie
         target_principal_id=job.patient_id,
         channel=channel,
         text=text,
+        presentation=effective_presentation(
+            patient, requested=requested_presentation(job), severity=job.severity, when=now()
+        ),
     )
     job.next_attempt_at = now() + timedelta(minutes=pol.backoff_for(job.attempts))
     await _transition(

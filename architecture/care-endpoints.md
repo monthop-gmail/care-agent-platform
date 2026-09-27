@@ -211,3 +211,28 @@ media.playback.pause | .cancel | .resume
 
 > ข้อ 0–3 ไม่ต้องรอข้อ 4 และข้อ 4 ไม่ทำให้ข้อ 0–3 ต้องออกแบบต่างไป
 > เพราะ `pause` ตัวเดียวกันใช้ได้ทั้งสองแบบ ต่างกันแค่ว่า**อะไรเป็นคนสั่ง**
+
+## สถานะ implementation (2026-09-27 · `task-0efb0077`)
+
+ข้อ 0 · 1 · 2 **ทำแล้ว** — รูปที่ลงจริงต่างจากที่เสนอไว้ตรงจุดเดียว: `dwell` กับ
+`response` เก็บเป็น dict เดียวในคอลัมน์ `presentation` (JSON) ไม่ได้แยกคอลัมน์ต่อฟิลด์
+เพราะทุกค่าเป็น code ที่ validate ด้วย `PRESENTATION` อยู่แล้ว การแยกคอลัมน์จะได้ migration
+ห้าใบโดยไม่ได้อะไรเพิ่ม
+
+| ของที่ลง | ที่อยู่ |
+|---|---|
+| `CHANNELS` ชุดปิด + validate ตอนเขียน | `care_patient/models.py` · `services.py::_validated_channels` |
+| ช่องทางไม่รู้จัก → `UnknownChannel` ตอนส่ง | `care_escalation/services.py::_deliver` |
+| `presentation` + `presented_at` | `care_escalation/models.py` · migration `0003_notification_presentation` |
+| `PRESENTATION` vocabulary + `validated_presentation()` | `care_escalation/models.py` |
+| `effective_presentation()` — quiet hours ลดเพดาน | `care_escalation/services.py` |
+| `mark_presented()` — endpoint รายงาน ไม่ใช่ evidence | `care_escalation/services.py` |
+| capability สามตัว + `floor` + profile allow | `policies/care-authority-map.yaml` · `profiles/care-agent/profile.yaml` |
+| โมดูล `care_endpoint` | `care_addons/care_endpoint/services.py` |
+| `care.device.action_requested` | `contracts/event/v1/care-event.schema.yaml` |
+
+ตัวตรวจที่ลงจริง — เทส 13 ตัวใน `tests/test_scenario_care_endpoint.py` รวม AST scan
+ที่กันไม่ให้ delivery/presentation ไหลเข้า `evidence` และ `payload_check` ขยายเป็น
+**121 event** โดยมี device action อยู่ใน scenario จริง
+
+ข้อ 3 (`care-tv-adapter`) เป็น `task-07382a72` · ข้อ 4 ยังไม่พร้อมตามเหตุผลข้างบน
