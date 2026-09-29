@@ -73,6 +73,9 @@ class RuntimeStats:
     superseded: int = 0
     # 🔒 metrics แยกตาม **code** ของชนิดงาน ไม่ใช่ตามผู้ป่วย — ไม่มี PII ในตัวนับ
     expired_by_class: dict[str, int] = field(default_factory=dict)
+    # 🔒 เหลือเวลาเท่าไรตอนที่ลงมือจริง — ถังหยาบ ไม่ใช่ timestamp (ADR-0019)
+    #    ตอบคำถามว่า "เพดานที่ตั้งไว้คับเกินไปไหม" โดยไม่บอกอะไรเลยเกี่ยวกับตัวคน
+    headroom_buckets: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 class AdapterRuntime:
@@ -169,6 +172,26 @@ class AdapterRuntime:
             self._revision.popitem(last=False)
         return False
 
+    def _record_headroom(self, envelope: Envelope) -> None:
+        """เก็บว่าคำสั่งไปถึงตอนเหลือเวลาอีกเท่าไร — หลักฐานสำหรับทบทวนเพดาน
+
+        🔒 ไม่เก็บเวลาจริง ไม่เก็บว่าใคร ไม่เก็บว่าเปิดอะไรอยู่ · เก็บแค่ว่า "ฉิวหรือไม่"
+           ถ้า `device_resume` ตกถัง `lt_1s` บ่อย แปลว่า 1 นาทีคับเกินไปจริง
+        """
+        if envelope.expires_at is None or envelope.expiry_class is None:
+            return
+        remaining = envelope.expires_at - self.clock()
+        if remaining < 1:
+            bucket = "lt_1s"
+        elif remaining < 5:
+            bucket = "lt_5s"
+        elif remaining < 30:
+            bucket = "lt_30s"
+        else:
+            bucket = "ge_30s"
+        per_class = self.stats.headroom_buckets.setdefault(envelope.expiry_class, {})
+        per_class[bucket] = per_class.get(bucket, 0) + 1
+
     # ── dispatch ────────────────────────────────────────────────────────────
     def dispatch(self, envelope: Envelope) -> None:
         """envelope มีสองชนิด และ adapter ไม่ตีความเพิ่มไปกว่านั้น"""
@@ -225,6 +248,7 @@ class AdapterRuntime:
                     or self._superseded(envelope, newest)
                 ):
                     continue
+                self._record_headroom(envelope)
                 try:
                     self.dispatch(envelope)
                 except asyncio.CancelledError:

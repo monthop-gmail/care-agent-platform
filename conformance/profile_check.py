@@ -55,6 +55,7 @@ DOMAIN_MODULES = [
     "care_activity", "care_inventory", "care_home", "care_safety",
     "care_organization", "care_orchestrator",
 ]
+EXTRA_CAPABILITY_MODULES = ["care_addons.care_orientation.producer"]
 
 
 def profile_schema(offline: bool) -> dict:
@@ -74,6 +75,9 @@ def main() -> int:
 
     for module in DOMAIN_MODULES:
         importlib.import_module(f"care_addons.{module}.services")
+    # โมดูลที่ประกาศ capability นอกไฟล์ `services.py` — ต้องระบุเอง ไม่งั้น DECLARED ขาด
+    for extra in EXTRA_CAPABILITY_MODULES:
+        importlib.import_module(extra)
 
     from care_addons.ap_policy.engine import (
         AUTHORITY_ORDER,

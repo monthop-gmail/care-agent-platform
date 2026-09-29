@@ -301,6 +301,8 @@ async def _send(
         care_job_id=job.care_job_id,
         correlation_id=job.correlation_id,
         sent_at=now(),
+        # เตือนครั้งที่สองของงานเดียวกันคือ **ใบแทน** ไม่ใช่ใบเพิ่ม (ADR-0016 ข้อ 5)
+        stream=f"job:{job.care_job_id}",
     )
     session.add(notification)
     # 🔒 กำหนดตายต้องถูกตั้ง **ก่อน** ของออกจากโดเมน · ถ้าตั้งหลังส่ง อุปกรณ์จะได้ของ
@@ -510,6 +512,17 @@ def _reminder_text(job: CareJob, attempt: int, ask_directly: bool) -> str:
     if attempt == 1:
         return f"ถึงเวลา {job.label} แล้วนะครับ"
     return f"ขอเตือนอีกครั้งนะครับ — {job.label}"
+
+
+async def deliver(
+    session: AsyncSession, scope: TenantScope, notification: CareNotification
+) -> None:
+    """เส้นส่งออกสาธารณะสำหรับผู้ผลิตข้อความที่อยู่นอกโมดูลนี้
+
+    มีไว้เพื่อให้ `_deliver` ไม่กลายเป็นสัญญาสาธารณะโดยไม่มีใครประกาศ ·
+    ผู้เรียกต้องตั้ง `expires_at`/`expiry_class`/`stream` มาก่อนแล้ว (ADR-0016)
+    """
+    await _deliver(session, scope, notification)
 
 
 async def run_due_jobs(session: AsyncSession, scope: TenantScope, *, limit: int = 200) -> dict:

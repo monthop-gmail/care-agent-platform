@@ -21,6 +21,9 @@
 | [0014](0014-presentation-intent-is-a-request-not-a-command.md) | presentation intent เป็นคำขอ ไม่ใช่คำสั่ง — ไม่มีสถานะไหนกลายเป็นหลักฐานเอง | Accepted |
 | [0015](0015-device-actions-touch-the-real-world.md) | การกระทำต่ออุปกรณ์เป็น capability ชนิดใหม่ — หยุดต้องไม่รอใคร | Accepted |
 | [0016](0016-a-deadline-is-a-care-decision.md) | กำหนดตายของงานที่ส่งออกไปที่อุปกรณ์เป็นการตัดสินของการดูแล ไม่ใช่ของ transport | Accepted |
+| [0017](0017-late-acknowledgement.md) | คำยืนยันที่มาช้า — สามทางเลือก ยังไม่ตัดสิน | 🟡 Proposed |
+| [0018](0018-who-owns-the-grace-window.md) | ใครเป็นเจ้าของ `grace_minutes` — ปิดสองปลายที่ไม่มีความหมาย ปล่อยตรงกลางให้ทีมดูแล | Accepted |
+| [0019](0019-resume-freshness-is-provisional.md) | เพดานหนึ่งนาทีของ `resume` เป็นค่าชั่วคราว พร้อมเครื่องมือที่จะใช้ตอบ | Accepted |
 
 ## กติกา
 

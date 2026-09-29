@@ -121,7 +121,10 @@ async def five_layers(session: AsyncSession, scope: TenantScope, patient_id: str
     }
 
 
-@care_action("orientation.brief.send")
+# 🔒 เดิมใบนี้ถือ `orientation.brief.send` ทั้งที่มันแค่ **ประกอบข้อความ** ไม่ได้ส่งอะไร ·
+#    ตัวที่ส่งจริงคือ `producer.publish_daily_brief()` และ `DECLARED` เก็บได้ฟังก์ชันเดียว
+#    ต่อหนึ่ง capability — ถ้าปล่อยให้ชนกัน `/policy` จะรายงานฟังก์ชันผิด (ADR-0016 รอบสอง)
+@care_action("orientation.answer")
 async def daily_brief(session: AsyncSession, scope: TenantScope, patient_id: str) -> dict:
     """"วันนี้ของคุณ" — หน้าหลักที่ผู้ป่วยไม่ต้องคิดเองว่าต้องทำอะไร"""
     patient, tz, local = await _patient_context(session, scope, patient_id)

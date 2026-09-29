@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -21,6 +22,42 @@ from care_addons.care_routine.models import KINDS, CareRoutineItem
 
 # routine kind ไหนนับเป็นงานชนิดใดในสายตาของ engine (มีผลต่อชื่อ event และ capability)
 SOURCE_KIND = {"meal": "meal", "medication": "medication"}
+
+
+logger = logging.getLogger(__name__)
+
+# ── ขอบของ `grace_minutes` (ADR-0018) ────────────────────────────────────────
+#
+# 🔒 ค่านี้เพิ่งกลายเป็นตัวกำหนดว่าคำเตือนอยู่บนจอนานแค่ไหน (ADR-0016) · ก่อนหน้านั้น
+#    มันถูกเก็บไว้เฉย ๆ ไม่มีใครอ่าน · การตั้งค่าที่เคยไม่มีผล วันนี้มีผลกับสิ่งที่ผู้ป่วยเห็น
+#
+# พื้นที่ตรงกลางเป็นของทีมดูแล ไม่ใช่ของเรา — เราปิดแค่สองปลายที่ **ไม่มีความหมาย**
+GRACE_FLOOR_MINUTES = 5       # ต่ำกว่านี้ คำเตือนหายก่อนที่คนจะทันขยับ = ไม่เคยเตือน
+GRACE_CEILING_MINUTES = 1440  # เกินหนึ่งวัน กิจวัตร "รายวัน" จะทับรอบของวันถัดไปเอง
+GRACE_WIDE_MINUTES = 240      # กว้างได้ แต่ต้องมีคำเตือน ไม่ใช่ผ่านเงียบ ๆ
+
+
+class GraceOutOfRange(ValueError):
+    """ค่าที่ไม่มีความหมาย — ต้องพังตอนตั้ง ไม่ใช่ตอนที่ผู้ป่วยไม่เห็นคำเตือน"""
+
+
+def check_grace(kind: str, grace_minutes: int) -> str | None:
+    """คืนคำเตือนถ้าค่ากว้างผิดปกติ · raise ถ้าค่าอยู่นอกช่วงที่มีความหมาย"""
+    if grace_minutes < GRACE_FLOOR_MINUTES:
+        raise GraceOutOfRange(
+            f"grace_minutes={grace_minutes} ต่ำกว่า {GRACE_FLOOR_MINUTES} นาที — "
+            f"คำเตือนจะหมดอายุก่อนที่ผู้ป่วยจะทันขยับ ซึ่งเท่ากับไม่ได้เตือนเลย"
+        )
+    if grace_minutes > GRACE_CEILING_MINUTES:
+        raise GraceOutOfRange(
+            f"grace_minutes={grace_minutes} เกินหนึ่งวัน — กิจวัตรรายวันจะทับรอบของวันถัดไป"
+        )
+    if grace_minutes > GRACE_WIDE_MINUTES:
+        return (
+            f"grace_minutes={grace_minutes} นาที แปลว่าคำเตือน '{kind}' จะค้างบนจอได้ถึง "
+            f"{grace_minutes // 60} ชั่วโมงหลังถึงกำหนด (ADR-0016) — ตั้งใจหรือไม่"
+        )
+    return None
 
 
 class FeatureDisabled(PermissionError):
@@ -42,6 +79,7 @@ async def add_routine(
 ) -> CareRoutineItem:
     if kind not in KINDS:
         raise ValueError(f"routine kind ไม่รู้จัก: {kind} — เพิ่มใน contract ก่อน")
+    warning = check_grace(kind, grace_minutes)
     patient = await get_patient(session, scope, patient_id, required_scope="care.manage")
     if not feature_enabled(patient, "routine"):
         raise FeatureDisabled("care_profile.routine ยังปิดอยู่สำหรับผู้ป่วยรายนี้")
@@ -72,8 +110,13 @@ async def add_routine(
             "patient_id": patient_id,
             "kind": kind,
             "scheduled_time": scheduled_time,
+            # 🔒 ค่าที่กว้างผิดปกติต้องเห็นได้ใน audit ด้วย ไม่ใช่เห็นแค่ตอนสร้าง
+            "grace_flag": "wide" if warning else "normal",
         },
     )
+    if warning:
+        logger.warning("%s (routine %s)", warning, item.routine_id)
+    item.grace_warning = warning     # ให้ route/ops หยิบไปแสดงต่อได้ ไม่ใช่คอลัมน์ในตาราง
     return item
 
 
