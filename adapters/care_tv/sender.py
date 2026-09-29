@@ -45,9 +45,9 @@ class TvChannel:
                         else notification.expires_at.timestamp()
                     ),
                     expiry_class=notification.expiry_class,
-                    # สายงาน = งานหนึ่งใบ · id ของแถวเดินหน้าเสมอ จึงใช้เป็น revision ได้
-                    stream=None if notification.care_job_id is None
-                    else f"job:{notification.care_job_id}",
+                    # 🔒 สายงานก็ **คัดลอก** มาเช่นกัน — ใครแทนใครได้เป็นการตัดสินของโดเมน
+                    #    (เดิม adapter เดาเอาจาก care_job_id ซึ่งแปลว่า orientation แทนกันไม่ได้)
+                    stream=notification.stream,
                     revision=notification.id,
                 )
             )

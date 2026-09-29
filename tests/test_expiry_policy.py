@@ -439,3 +439,86 @@ async def test_the_runtime_remembers_the_deadline_of_prompts_that_need_an_answer
 
     assert not loop.prompts.is_fresh("job-9", at=2_000.0)
     assert len(loop.prompts) == 1, "ข้อความที่ไม่ต้องการคำตอบไม่ต้องจำ"
+
+
+# ── G) ขอบของ grace_minutes (ADR-0018) และเครื่องวัดเพดาน resume (ADR-0019) ──
+
+
+async def test_a_grace_that_expires_before_a_person_can_react_is_refused(session, tenant):
+    """🔒 คำเตือนที่หายก่อนคนทันขยับ เท่ากับไม่เคยเตือน — ต้องพังตอนตั้ง"""
+    from care_addons.care_routine import services as routine_svc
+
+    patient, _ = await setup_patient(session, tenant)
+    with pytest.raises(routine_svc.GraceOutOfRange):
+        await routines.add_routine(
+            session, scope_for(tenant), patient_id=patient.patient_id,
+            kind="medication", label="ยาเช้า", scheduled_time="08:00", grace_minutes=1,
+        )
+    await session.rollback()
+
+
+async def test_a_grace_longer_than_a_day_is_refused(session, tenant):
+    from care_addons.care_routine import services as routine_svc
+
+    patient, _ = await setup_patient(session, tenant)
+    with pytest.raises(routine_svc.GraceOutOfRange):
+        await routines.add_routine(
+            session, scope_for(tenant), patient_id=patient.patient_id,
+            kind="activity", label="เดินเล่น", scheduled_time="17:00", grace_minutes=2000,
+        )
+    await session.rollback()
+
+
+async def test_an_unusually_wide_grace_is_allowed_but_never_silent(session, tenant):
+    """🔒 พื้นที่ตรงกลางเป็นของทีมดูแล — เราไม่ห้าม แต่ต้องไม่ผ่านเงียบ ๆ"""
+
+    patient, _ = await setup_patient(session, tenant)
+    item = await routines.add_routine(
+        session, scope_for(tenant), patient_id=patient.patient_id,
+        kind="activity", label="เดินเล่น", scheduled_time="17:00", grace_minutes=600,
+    )
+    assert item.grace_warning and "ชั่วโมง" in item.grace_warning
+    events = await audit_rows(session, tenant)
+    assert any(e.attributes.get("grace_flag") == "wide" for e in events)
+
+    normal = await routines.add_routine(
+        session, scope_for(tenant), patient_id=patient.patient_id,
+        kind="activity", label="อาบน้ำ", scheduled_time="18:00", grace_minutes=30,
+    )
+    assert normal.grace_warning is None
+
+
+def test_resume_can_never_be_looser_than_pause_for_any_trigger():
+    """🔒 ข้อห้ามจากใบงาน — ห้ามลดความเข้มของ resume ให้ต่ำกว่า pause ไม่ว่าทางไหน"""
+    at = datetime(2026, 9, 28, 8, 0, tzinfo=ZoneInfo("UTC"))
+    for trigger in expiry.ACTION_CLASS_BY_TRIGGER:
+        resume_at, _ = expiry.for_device_action("resume", trigger, at=at)
+        pause_at, _ = expiry.for_device_action("pause", trigger, at=at, )
+        if trigger == "reminder_due":
+            continue          # pause ผูกกับช่วงของงาน ไม่ใช่เวลาคงที่ — เทียบตรง ๆ ไม่ได้
+        assert resume_at <= pause_at, f"trigger {trigger}: resume หลวมกว่า pause"
+
+
+async def test_headroom_is_measured_in_coarse_buckets_with_nothing_about_the_person():
+    """ADR-0019 — หลักฐานสำหรับทบทวนเพดาน 1 นาทีของ resume โดยไม่แตะพฤติกรรมผู้ป่วย"""
+    queue = InMemoryQueue()
+    loop = runtime.AdapterRuntime(PollingTransport(queue, interval=0.01), clock=lambda: 1_000.0)
+    queue.put(
+        Envelope(
+            kind="device_action", payload={"action": "resume"},
+            expires_at=1_000.5, expiry_class="device_resume",
+        )
+    )
+    queue.put(
+        Envelope(
+            kind="device_action", payload={"action": "pause"},
+            expires_at=1_120.0, expiry_class="device_pause",
+        )
+    )
+    await loop.run(max_polls=1)
+
+    assert loop.stats.headroom_buckets == {
+        "device_resume": {"lt_1s": 1},
+        "device_pause": {"ge_30s": 1},
+    }
+    assert loop.controller.calls == ["resume", "pause"], "ยังไม่หมดอายุ ต้องยังทำ"

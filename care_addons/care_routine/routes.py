@@ -46,8 +46,18 @@ async def add_routine(
         )
     except svc.FeatureDisabled as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except svc.GraceOutOfRange as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     await session.commit()
-    return {"routine_id": item.routine_id, "label": item.label, "scheduled_time": item.scheduled_time}
+    return {
+        "routine_id": item.routine_id,
+        "label": item.label,
+        "scheduled_time": item.scheduled_time,
+        # 🔒 ค่านี้กำหนดว่าคำเตือนค้างบนจอนานแค่ไหน (ADR-0016) — ต้องตอบกลับไปเสมอ
+        #    ไม่ใช่ให้คนตั้งค่าไปเดาเอาเองว่ามีผลอะไร
+        "grace_minutes": item.grace_minutes,
+        "grace_warning": getattr(item, "grace_warning", None),
+    }
 
 
 @router.get("")

@@ -81,6 +81,7 @@ class CareNotification(Base):
     __tablename__ = "care_notification"
     __table_args__ = (
         Index("ix_care_notif_lookup", "tenant_id", "patient_id", "audience", "sent_at"),
+        Index("ix_care_notif_stream", "tenant_id", "stream", "id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -112,6 +113,9 @@ class CareNotification(Base):
     #    `expiry_class` เป็น code จากทะเบียนปิด จึงใส่ใน audit/metrics ได้ ไม่มี PII
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expiry_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 🔒 สายงานของการแสดงผล — ใบใหม่ในสายเดียวกัน **แทน** ใบเก่า ไม่ใช่เพิ่มจากใบเก่า
+    #    โดเมนเป็นคนประกาศว่าอะไรแทนอะไรได้ · `None` = ใบนี้ไม่มีใครแทนได้
+    stream: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # 🔒 endpoint รายงานว่าวางบนจอจริงแล้ว — อยู่ข้าง delivery ไม่ใช่ข้าง evidence
     #    "แสดงบนจอแล้ว" ไม่ใช่หลักฐานว่าคนเห็น และไม่มีทางกลายเป็น evidence (ADR-0014 ข้อ 5)
     presented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
